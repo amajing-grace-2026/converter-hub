@@ -3,24 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Converter Hub</title>
+<title>Converter Hub · Amajing Labs</title>
+<link rel="icon" href="brand/ikon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+<meta name="theme-color" content="#0B1F3A">
 <script src="lib/lame.min.js"></script>
 <script src="lib/gifenc.js"></script>
 <style>
   :root{
     --bg:#f5f6f8; --panel:#ffffff; --ink:#1b1f27; --muted:#6b7280; --line:#e3e6eb;
-    --accent:#2f6fed; --accent-ink:#fff; --ok:#16a34a; --err:#dc2626; --soft:#eef3ff;
+    --accent:#0057B8; --accent-ink:#fff; --ok:#16a34a; --err:#dc2626; --soft:#eaf2fc;
   }
   @media (prefers-color-scheme: dark){
     :root{ --bg:#111418; --panel:#1a1e24; --ink:#e7e9ee; --muted:#9aa3b2; --line:#2a3039;
-      --accent:#5b8cff; --accent-ink:#0b1020; --ok:#4ade80; --err:#f87171; --soft:#1f2838; }
+      --accent:#5AA9FF; --accent-ink:#0B1F3A; --ok:#4ade80; --err:#f87171; --soft:#1f2838; }
   }
   *{box-sizing:border-box}
   [hidden]{display:none !important}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   .app{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
   nav{background:var(--panel);border-right:1px solid var(--line);padding:20px 14px}
-  nav h1{font-size:17px;margin:0 6px 18px}
+  .brand{display:block;margin:2px 8px 20px;text-decoration:none}
+  .brand img{display:block;width:170px;height:auto}
+  .brand span{display:block;margin-top:6px;font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  /* logo navy di tema terang, logo putih di tema gelap */
+  .logo-dark{display:none !important}
+  @media (prefers-color-scheme: dark){
+    .logo-light{display:none !important}
+    .brand .logo-dark{display:block !important}
+    .foot .logo-dark{display:inline !important}
+  }
+  .foot .logo-inline{height:17px;width:auto;vertical-align:-3px;margin-left:6px}
   nav .group{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 8px 6px}
   nav button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);
     padding:9px 10px;border-radius:8px;font:inherit;cursor:pointer}
@@ -105,13 +118,17 @@
 <body>
 <div class="app">
   <nav>
-    <h1>🔁 Converter Hub</h1>
+    <h1 style="margin:0"><a class="brand" href="#" title="Converter Hub · Amajing Labs">
+      <img class="logo-light" src="brand/logo.svg" alt="Amajing Labs">
+      <img class="logo-dark" src="brand/logo-gelap.svg" alt="Amajing Labs">
+      <span>Converter Hub</span>
+    </a></h1>
     <div class="tools" id="toolNav"></div>
   </nav>
   <div class="content">
     <main id="view"></main>
     <footer class="foot">
-      Dibuat oleh <strong>Amajing Labs</strong>
+      Dibuat oleh<img class="logo-inline logo-light" src="brand/logo-kecil.svg" alt="Amajing Labs"><img class="logo-inline logo-dark" src="brand/logo-kecil-gelap.svg" alt="Amajing Labs">
       <span class="dot">·</span>
       <a href="https://forms.gle/fZAtNMCwKqhQhgpKA" target="_blank" rel="noopener">💬 Kirim masukan</a>
     </footer>
@@ -143,6 +160,9 @@ const view = document.getElementById('view');
 function openTool(id){
   const t = TOOLS.find(x => x.id === id) || TOOLS[0];
   nav.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.id === t.id));
+  // di HP menu alat berupa baris geser → geser ke alat yang aktif
+  const act = nav.querySelector('button.active');
+  if (act && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = act.offsetLeft - (nav.clientWidth - act.offsetWidth) / 2;
   view.innerHTML = '';
   t.render(view);
   try { location.hash = t.id; } catch(e){}

@@ -23,4 +23,6 @@ Paling cocok di Chrome atau Edge versi terbaru (Kompres Video butuh WebCodecs).
 - [Mediabunny](https://github.com/Vanilagy/mediabunny) — kompres video (MPL-2.0)
 
 ---
+![Amajing Labs](brand/logo.svg)
+
 Dibuat oleh **Amajing Labs** · Masukan & laporan kesalahan: https://forms.gle/fZAtNMCwKqhQhgpKA
