@@ -18,7 +18,7 @@
   *{box-sizing:border-box}
   [hidden]{display:none !important}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-  .app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+  .app{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
   nav{background:var(--panel);border-right:1px solid var(--line);padding:20px 14px}
   nav h1{font-size:17px;margin:0 6px 18px}
   nav .group{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 8px 6px}
@@ -56,13 +56,36 @@
   .card img{width:100%;aspect-ratio:3/4;object-fit:contain;background:var(--line);border-radius:6px}
   .card .row{justify-content:space-between}
   .card .btn{padding:4px 10px;font-size:13px}
+  /* Word → PDF */
+  .toolbar{display:flex;flex-wrap:wrap;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;margin-bottom:12px;position:sticky;top:0;z-index:2}
+  .toolbar button{font:inherit;font-size:14px;min-width:34px;height:32px;border:0;border-radius:6px;background:none;color:var(--ink);cursor:pointer}
+  .toolbar button:hover{background:var(--soft)}
+  .toolbar .sep{width:1px;background:var(--line);margin:4px 2px}
+  .paperwrap{background:#c9ccd2;border-radius:12px;padding:20px 0;overflow-x:auto}
+  .paper{background:#fff;color:#000;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,.18);min-height:200px;outline:none;max-width:calc(100% - 24px)}
+  .paper:empty::before{content:attr(data-placeholder);color:#9aa0a6}
+  .doc{font-size:12pt;line-height:1.4;color:#000;word-wrap:break-word}
+  .doc p{margin:0 0 8pt}
+  .doc table{border-collapse:collapse;max-width:100%}
+  .doc td,.doc th{vertical-align:top;padding:2pt 5pt}
+  .doc img{max-width:100%;height:auto}
+  .doc .pagebreak{break-after:page;height:0;border-top:2px dashed #9aa0a6;margin:14px 0;position:relative}
+  .doc .pagebreak::after{content:'pemisah halaman';position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#fff;color:#9aa0a6;font:11px system-ui;padding:0 6px}
+  #printRoot{display:none}
+  @media print{
+    body > *:not(#printRoot){display:none !important}
+    body{background:#fff !important}
+    #printRoot{display:block}
+    #printRoot .pagebreak{border:0;margin:0}
+    #printRoot .pagebreak::after{display:none}
+  }
   .num{font:inherit;border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:var(--panel);color:var(--ink);width:80px}
   input[type=range]{accent-color:var(--accent);width:120px}
   audio{width:100%;margin-top:8px;height:36px}
   .note{color:var(--muted);font-size:13px;margin-top:22px}
   .empty{color:var(--muted);text-align:center;padding:40px 0}
   @media (max-width:700px){
-    .app{grid-template-columns:1fr}
+    .app{grid-template-columns:minmax(0,1fr)}
     nav{border-right:0;border-bottom:1px solid var(--line);padding:14px 16px}
     nav .group{display:none}
     nav .tools{display:flex;gap:6px;overflow-x:auto}
@@ -90,6 +113,7 @@ const TOOLS = [
   { id: 'video-gif', name: 'Video → GIF', group: 'Audio & Video', render: renderVideoToGif },
   { id: 'kompres-video', name: 'Kompres Video', group: 'Audio & Video', render: renderVideoCompress },
   { id: 'gambar', name: 'JPG / PNG / WEBP', group: 'Gambar', render: renderImageConvert },
+  { id: 'word-pdf', name: 'Word → PDF', group: 'Dokumen', render: renderWordToPdf },
   { id: 'gambar-pdf', name: 'Gambar → PDF', group: 'Dokumen', render: renderImageToPdf },
   { id: 'pdf-gambar', name: 'PDF → Gambar', group: 'Dokumen', render: renderPdfToImage },
   { id: 'gabung-pdf', name: 'Gabung PDF', group: 'Dokumen', render: renderMergePdf },
@@ -1678,6 +1702,218 @@ function renderSplitPdf(el){
   $('#arg').oninput = updatePreview;
   $('#go').onclick = split;
   $('#zip').onclick = downloadZip;
+}
+
+/* ============================================================
+   Word → PDF  (paste dari Word ke editor, simpan via dialog cetak → "Simpan sebagai PDF")
+   ============================================================ */
+const PAPERS = { a4: [210, 297], f4: [215, 330], letter: [216, 279] }; // mm
+const MARGINS = { normal: 25.4, sempit: 12.7, lebar: 31.75 };         // mm
+const FONTS = {
+  word: '', times: '"Times New Roman", Times, serif', arial: 'Arial, Helvetica, sans-serif',
+  calibri: 'Calibri, Carlito, "Segoe UI", sans-serif',
+};
+
+// bersihkan HTML hasil paste dari Word: buang script/komentar/kelas Mso, tapi pertahankan format
+function cleanPastedHtml(html){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script,style,meta,link,title,xml,iframe,object,embed,form,input,button').forEach(n => n.remove());
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_COMMENT);
+  const comments = []; while (walker.nextNode()) comments.push(walker.currentNode);
+  comments.forEach(c => c.remove());
+  let droppedImages = 0;
+  const KEEP = new Set(['style', 'href', 'src', 'colspan', 'rowspan', 'align', 'width', 'height', 'border', 'alt']);
+  for (const el of [...doc.body.querySelectorAll('*')]){
+    if (el.tagName.includes(':')){ el.replaceWith(...el.childNodes); continue; } // <o:p>, <v:shape> dll
+    for (const a of [...el.attributes]){
+      if (!KEEP.has(a.name.toLowerCase())) el.removeAttribute(a.name);
+    }
+    const st = el.getAttribute('style');
+    if (st){
+      const kept = st.split(';').map(s => s.trim()).filter(s => s && !/^mso-|^tab-stops|^layout-grid/i.test(s));
+      kept.length ? el.setAttribute('style', kept.join(';')) : el.removeAttribute('style');
+    }
+    if (el.tagName === 'A' && /^\s*javascript:/i.test(el.getAttribute('href') || '')) el.removeAttribute('href');
+    if (el.tagName === 'IMG'){
+      const src = el.getAttribute('src') || '';
+      if (!/^(data:image\/|https?:)/i.test(src)){ el.remove(); droppedImages++; }
+    }
+  }
+  return { html: doc.body.innerHTML, droppedImages };
+}
+
+function renderWordToPdf(el){
+  el.innerHTML = `
+    <h2>Word → PDF</h2>
+    <p class="sub">Salin isi dokumen dari Word (Ctrl+A, Ctrl+C), tempel di kertas di bawah (Ctrl+V), lalu simpan sebagai PDF. Format seperti tebal, miring, judul, daftar, dan tabel ikut terbawa.</p>
+    <div class="opts">
+      <label for="paper">Kertas</label>
+      <select id="paper"><option value="a4" selected>A4</option><option value="f4">F4 / Folio</option><option value="letter">Letter</option></select>
+      <select id="orient"><option value="portrait" selected>Tegak</option><option value="landscape">Mendatar</option></select>
+      <label for="margin">Margin</label>
+      <select id="margin"><option value="normal" selected>Normal (2,54 cm)</option><option value="sempit">Sempit (1,27 cm)</option><option value="lebar">Lebar (3,17 cm)</option></select>
+      <label for="font">Huruf</label>
+      <select id="font"><option value="word" selected>Ikuti Word</option><option value="times">Times New Roman</option><option value="arial">Arial</option><option value="calibri">Calibri</option></select>
+    </div>
+    <div class="toolbar" id="tb">
+      <button data-cmd="bold" title="Tebal (Ctrl+B)"><b>B</b></button>
+      <button data-cmd="italic" title="Miring (Ctrl+I)"><i>I</i></button>
+      <button data-cmd="underline" title="Garis bawah (Ctrl+U)"><u>U</u></button>
+      <span class="sep"></span>
+      <button data-cmd="formatBlock" data-val="H1" title="Judul besar">H1</button>
+      <button data-cmd="formatBlock" data-val="H2" title="Judul">H2</button>
+      <button data-cmd="formatBlock" data-val="P" title="Paragraf biasa">¶</button>
+      <span class="sep"></span>
+      <button data-cmd="insertUnorderedList" title="Daftar poin">• ≡</button>
+      <button data-cmd="insertOrderedList" title="Daftar nomor">1. ≡</button>
+      <span class="sep"></span>
+      <button data-cmd="justifyLeft" title="Rata kiri">Kiri</button>
+      <button data-cmd="justifyCenter" title="Rata tengah">Tengah</button>
+      <button data-cmd="justifyRight" title="Rata kanan">Kanan</button>
+      <button data-cmd="justifyFull" title="Rata kiri-kanan">Rata</button>
+      <span class="sep"></span>
+      <button data-act="break" title="Sisipkan pemisah halaman">⤓ Hal</button>
+      <button data-cmd="removeFormat" title="Hapus format teks terpilih">⌫ Format</button>
+      <button data-cmd="undo" title="Urungkan (Ctrl+Z)">↶</button>
+      <button data-cmd="redo" title="Ulangi (Ctrl+Y)">↷</button>
+    </div>
+    <div class="paperwrap">
+      <div class="paper doc" id="ed" contenteditable="true" spellcheck="false" data-placeholder="Tempel (Ctrl+V) isi dokumen Word di sini, atau ketik langsung…"></div>
+    </div>
+    <p class="meta" id="msg" style="min-height:1.5em;margin:8px 0 0"></p>
+    <div class="opts">
+      <label for="fname">Nama file</label>
+      <input id="fname" class="num" style="width:200px" value="dokumen">
+      <span class="meta">.pdf</span>
+      <span class="spacer"></span>
+      <button class="btn" id="clear">Kosongkan</button>
+      <button class="btn primary" id="save">Simpan sebagai PDF</button>
+    </div>
+    <p class="note">Setelah klik <b>Simpan sebagai PDF</b>, jendela cetak terbuka: pilih <b>Tujuan → Simpan sebagai PDF</b>, lalu <b>Simpan</b>. Matikan <b>"Header dan footer"</b> di "Setelan lainnya" supaya tanggal/alamat web tidak ikut tercetak. Teks di PDF tetap bisa dipilih dan dicari. Gambar dari Word kadang tidak ikut ter-paste — kalau begitu, salin gambarnya satu per satu lalu tempel. Isi kertas tersimpan otomatis di browser ini.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const ed = $('#ed'), msg = $('#msg');
+  const DRAFT = 'wordpdf_draft_v1';
+
+  // ukuran kertas di layar mengikuti pengaturan, supaya letak baris mirip hasil PDF
+  function layout(){
+    let [w, h] = PAPERS[$('#paper').value];
+    if ($('#orient').value === 'landscape') [w, h] = [h, w];
+    const m = MARGINS[$('#margin').value];
+    ed.style.width = w + 'mm'; ed.style.minHeight = h + 'mm'; ed.style.padding = m + 'mm';
+    ed.style.fontFamily = FONTS[$('#font').value] || 'Calibri, Carlito, "Segoe UI", sans-serif';
+    ed.classList.toggle('force-font', $('#font').value !== 'word');
+    saveDraft();
+  }
+
+  let saveTimer = null;
+  function saveDraft(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT, JSON.stringify({
+          html: ed.innerHTML, name: $('#fname').value,
+          opts: ['paper', 'orient', 'margin', 'font'].map(id => $('#' + id).value),
+        }));
+      } catch(e){}
+    }, 400);
+  }
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT) || 'null');
+    if (d){
+      ed.innerHTML = d.html || ''; $('#fname').value = d.name || 'dokumen';
+      ['paper', 'orient', 'margin', 'font'].forEach((id, i) => { if (d.opts && d.opts[i]) $('#' + id).value = d.opts[i]; });
+      if (ed.textContent.trim()) msg.textContent = 'Draf terakhir dimuat.';
+    }
+  } catch(e){}
+
+  function insertHtml(html){
+    ed.focus();
+    if (!document.execCommand('insertHTML', false, html)){
+      const sel = getSelection();
+      if (!sel.rangeCount) { ed.insertAdjacentHTML('beforeend', html); return; }
+      const r = sel.getRangeAt(0); r.deleteContents();
+      r.insertNode(r.createContextualFragment(html)); sel.collapseToEnd();
+    }
+  }
+
+  ed.addEventListener('paste', e => {
+    const cd = e.clipboardData; if (!cd) return;
+    const html = cd.getData('text/html');
+    const img = [...cd.files].find(f => f.type.startsWith('image/'));
+    e.preventDefault();
+    if (html){
+      const { html: clean, droppedImages } = cleanPastedHtml(html);
+      insertHtml(clean);
+      msg.innerHTML = droppedImages
+        ? `<span class="status err">${droppedImages} gambar dari Word tidak ikut ter-paste — salin & tempel gambarnya satu per satu.</span>`
+        : '✓ Ditempel dengan format.';
+    } else if (img){
+      const r = new FileReader();
+      r.onload = () => { insertHtml(`<img src="${r.result}" alt="">`); msg.textContent = '✓ Gambar ditempel.'; saveDraft(); };
+      r.readAsDataURL(img);
+    } else {
+      const text = cd.getData('text/plain');
+      insertHtml(text.split(/\r?\n/).map(l => `<p>${esc(l) || '<br>'}</p>`).join(''));
+      msg.textContent = '✓ Ditempel sebagai teks biasa.';
+    }
+    if (/^dokumen$/.test($('#fname').value)){
+      const first = ed.textContent.trim().split('\n')[0].trim().slice(0, 60);
+      if (first) $('#fname').value = first.replace(/[\\/:*?"<>|]/g, '').trim() || 'dokumen';
+    }
+    saveDraft();
+  });
+  ed.addEventListener('input', saveDraft);
+
+  $('#tb').addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); }); // jaga seleksi
+  $('#tb').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    ed.focus();
+    if (b.dataset.act === 'break') insertHtml('<div class="pagebreak"></div><p><br></p>');
+    else document.execCommand(b.dataset.cmd, false, b.dataset.val || null);
+    saveDraft();
+  });
+
+  ['#paper', '#orient', '#margin', '#font'].forEach(s => $(s).addEventListener('change', layout));
+  $('#fname').addEventListener('input', saveDraft);
+
+  $('#clear').onclick = () => {
+    if (ed.textContent.trim() && !confirm('Kosongkan seluruh isi kertas?')) return;
+    ed.innerHTML = ''; $('#fname').value = 'dokumen'; msg.textContent = ''; saveDraft(); ed.focus();
+  };
+
+  $('#save').onclick = () => {
+    if (!ed.textContent.trim() && !ed.querySelector('img,table')){ msg.innerHTML = '<span class="status err">Kertas masih kosong — tempel dulu isi dokumennya.</span>'; return; }
+    let [w, h] = PAPERS[$('#paper').value];
+    if ($('#orient').value === 'landscape') [w, h] = [h, w];
+    const m = MARGINS[$('#margin').value];
+    const font = FONTS[$('#font').value];
+
+    document.getElementById('printRoot')?.remove();
+    document.getElementById('printPage')?.remove();
+    const root = document.createElement('div');
+    root.id = 'printRoot'; root.className = 'doc';
+    root.innerHTML = ed.innerHTML;
+    root.style.fontFamily = font || 'Calibri, Carlito, "Segoe UI", sans-serif';
+    document.body.appendChild(root);
+    const st = document.createElement('style');
+    st.id = 'printPage';
+    st.textContent = `@page{size:${w}mm ${h}mm;margin:${m}mm}` +
+      (font ? `#printRoot *{font-family:inherit !important}` : '');
+    document.head.appendChild(st);
+
+    const oldTitle = document.title;
+    document.title = ($('#fname').value.trim() || 'dokumen').replace(/[\\/:*?"<>|]/g, '_'); // jadi nama file PDF
+    const cleanup = () => { document.title = oldTitle; root.remove(); st.remove(); window.removeEventListener('afterprint', cleanup); };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+  };
+
+  // huruf paksa: di layar juga timpa font dari Word
+  const fstyle = document.createElement('style');
+  fstyle.textContent = '.paper.force-font *{font-family:inherit !important}';
+  el.appendChild(fstyle);
+  layout();
 }
 
 openTool((location.hash || '').slice(1));

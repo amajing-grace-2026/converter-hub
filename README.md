@@ -8,7 +8,7 @@ Kumpulan converter yang jalan langsung di browser. File tidak di-upload ke serve
 
 - **Audio & Video:** MP4 → MP3, Video → GIF, Kompres Video
 - **Gambar:** JPG / PNG / WEBP
-- **Dokumen:** Gambar → PDF, PDF → Gambar, Gabung PDF, Pisah PDF, Kompres PDF
+- **Dokumen:** Word → PDF (paste), Gambar → PDF, PDF → Gambar, Gabung PDF, Pisah PDF, Kompres PDF
 
 Paling cocok di Chrome atau Edge versi terbaru (Kompres Video butuh WebCodecs).
 
