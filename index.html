@@ -116,6 +116,7 @@ const TOOLS = [
   { id: 'kompres-video', name: 'Kompres Video', group: 'Audio & Video', render: renderVideoCompress },
   { id: 'gambar', name: 'JPG / PNG / WEBP', group: 'Gambar', render: renderImageConvert },
   { id: 'word-pdf', name: 'Word → PDF', group: 'Dokumen', render: renderWordToPdf },
+  { id: 'pdf-word', name: 'PDF → Word', group: 'Dokumen', render: renderPdfToWord },
   { id: 'gambar-pdf', name: 'Gambar → PDF', group: 'Dokumen', render: renderImageToPdf },
   { id: 'pdf-gambar', name: 'PDF → Gambar', group: 'Dokumen', render: renderPdfToImage },
   { id: 'gabung-pdf', name: 'Gabung PDF', group: 'Dokumen', render: renderMergePdf },
@@ -1955,6 +1956,322 @@ function renderWordToPdf(el){
   fstyle.textContent = '.paper.force-font *{font-family:inherit !important}';
   el.appendChild(fstyle);
   layout();
+}
+
+/* ============================================================
+   PDF → Word (.docx)
+   - mode "edit": teks diambil pdf.js, disusun ulang jadi paragraf (tebal/miring/ukuran/huruf/perataan)
+   - mode "persis": tiap halaman jadi gambar di dalam .docx (tampilan sama, tidak bisa diedit)
+   File .docx ditulis manual (OOXML) lalu di-zip pakai JSZip.
+   ============================================================ */
+const xmlEsc = s => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
+  .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function fontFamilyFromPdf(name){
+  if (!name) return '';
+  let n = name.replace(/^[A-Z]{6}\+/, '').split(/[-,]/)[0].replace(/(PSMT|PS|MT)$/, '');
+  n = n.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  if (/^(Helvetica|Arial)/i.test(n)) return 'Arial';
+  if (/^Times/i.test(n)) return 'Times New Roman';
+  if (/^Courier/i.test(n)) return 'Courier New';
+  if (/^(Symbol|Zapf|g_d)/i.test(n)) return '';
+  return n;
+}
+
+// ubah satu halaman PDF jadi daftar paragraf
+async function extractPageParas(page){
+  const vp = page.getViewport({ scale: 1 });
+  const tc = await page.getTextContent();
+  try { await page.getOperatorList(); } catch(e){} // memuat info font (tebal/miring/nama)
+  const fontInfo = {};
+  const info = fn => {
+    if (fontInfo[fn]) return fontInfo[fn];
+    let f = null; try { f = page.commonObjs.get(fn); } catch(e){}
+    const name = (f && f.name) || '';
+    return fontInfo[fn] = {
+      bold: !!(f && (f.bold || f.black)) || /bold|black|heavy|semibold|demi/i.test(name),
+      italic: !!(f && f.italic) || /italic|oblique/i.test(name),
+      family: fontFamilyFromPdf(name),
+    };
+  };
+  // ubah koordinat ke "dari atas" pakai transform viewport (menangani halaman yang diputar)
+  const items = [];
+  for (const it of tc.items){
+    if (!it.str) continue;
+    const t = pdfjsLib.Util.transform(vp.transform, it.transform);
+    const size = Math.hypot(t[2], t[3]) || it.height || 10;
+    const fi = info(it.fontName);
+    items.push({ str: it.str, x: t[4], y: t[5], size, w: it.width, ...fi });
+  }
+  items.sort((a, b) => a.y - b.y || a.x - b.x);
+
+  const lines = [];
+  for (const it of items){
+    const ln = lines.find(l => Math.abs(l.y - it.y) <= Math.max(l.size, it.size) * 0.45);
+    if (ln){ ln.items.push(it); ln.size = Math.max(ln.size, it.size); }
+    else lines.push({ y: it.y, size: it.size, items: [it] });
+  }
+  lines.sort((a, b) => a.y - b.y);
+  for (const ln of lines){
+    ln.items.sort((a, b) => a.x - b.x);
+    ln.runs = []; let prevEnd = null, prevStr = '';
+    for (const it of ln.items){
+      let s = it.str;
+      if (prevEnd !== null && it.x - prevEnd > it.size * 0.2 && !/\s$/.test(prevStr) && !/^\s/.test(s)) s = ' ' + s;
+      const last = ln.runs[ln.runs.length - 1];
+      const sz = Math.round(it.size * 2) / 2;
+      if (last && last.bold === it.bold && last.italic === it.italic && last.size === sz && last.font === it.family) last.text += s;
+      else ln.runs.push({ text: s, bold: it.bold, italic: it.italic, size: sz, font: it.family });
+      prevEnd = it.x + it.w; prevStr = s;
+    }
+    ln.x0 = ln.items[0].x; ln.x1 = Math.max(...ln.items.map(i => i.x + i.w));
+    ln.text = ln.runs.map(r => r.text).join('');
+  }
+  const content = lines.filter(l => l.text.trim());
+  if (!content.length) return { w: vp.width, h: vp.height, paras: [], chars: 0 };
+
+  const left = Math.min(...content.map(l => l.x0)), right = Math.max(...content.map(l => l.x1));
+  const cw = Math.max(1, right - left);
+  const alignOf = l => {
+    const mid = (l.x0 + l.x1) / 2;
+    if (l.x0 > left + cw * 0.08 && Math.abs(mid - (left + right) / 2) < cw * 0.06) return 'center';
+    if (l.x0 > left + cw * 0.3 && right - l.x1 < cw * 0.03) return 'right';
+    return 'left';
+  };
+  const BULLET = /^\s*([•●▪◦‣\-–*]|\d{1,3}[.)]|[a-zA-Z][.)])\s/;
+
+  const paras = [];
+  let cur = null, prev = null;
+  for (const l of content){
+    const align = alignOf(l);
+    const gap = prev ? l.y - prev.y : 0;
+    const newPara = !cur || gap > prev.size * 1.75 || Math.abs(l.size - prev.size) > 1.2
+      || BULLET.test(l.text) || align !== cur.align
+      || (align === 'left' && prev.x1 < right - cw * 0.15) // baris sebelumnya pendek = akhir paragraf
+      || Math.abs(l.x0 - prev.x0) > cw * 0.08 && align === 'left' && cur.lines > 1;
+    if (newPara){
+      cur = { runs: l.runs.map(r => ({ ...r })), align, size: l.size, indent: align === 'left' ? l.x0 - left : 0,
+              spaceBefore: prev ? Math.max(0, gap - prev.size * 1.3) : 0, lines: 1 };
+      paras.push(cur);
+    } else {
+      const last = cur.runs[cur.runs.length - 1];
+      if (last && !/[\s-]$/.test(last.text)) last.text += ' ';
+      if (last && /\w-$/.test(last.text) && /^[a-z]/.test(l.text)) last.text = last.text.slice(0, -1); // gabung kata terpotong
+      for (const r of l.runs){
+        const lr = cur.runs[cur.runs.length - 1];
+        if (lr && lr.bold === r.bold && lr.italic === r.italic && lr.size === r.size && lr.font === r.font) lr.text += r.text;
+        else cur.runs.push({ ...r });
+      }
+      cur.lines++;
+    }
+    prev = l;
+  }
+  return { w: vp.width, h: vp.height, paras, chars: content.reduce((s, l) => s + l.text.length, 0), left, right };
+}
+
+function docxRun(r){
+  const f = r.font ? `<w:rFonts w:ascii="${xmlEsc(r.font)}" w:hAnsi="${xmlEsc(r.font)}" w:cs="${xmlEsc(r.font)}"/>` : '';
+  return `<w:r><w:rPr>${f}${r.bold ? '<w:b/>' : ''}${r.italic ? '<w:i/>' : ''}<w:sz w:val="${Math.round(r.size * 2)}"/><w:szCs w:val="${Math.round(r.size * 2)}"/></w:rPr><w:t xml:space="preserve">${xmlEsc(r.text)}</w:t></w:r>`;
+}
+
+async function buildDocx({ bodyXml, pageW, pageH, margins, images, baseFont, baseSize }){
+  await loadScript('lib/jszip.min.js');
+  const tw = pt => Math.round(pt * 20);
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  const sect = `<w:sectPr><w:pgSz w:w="${tw(pageW)}" w:h="${tw(pageH)}"${pageW > pageH ? ' w:orient="landscape"' : ''}/>` +
+    `<w:pgMar w:top="${tw(margins.top)}" w:right="${tw(margins.right)}" w:bottom="${tw(margins.bottom)}" w:left="${tw(margins.left)}" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>`;
+  const font = xmlEsc(baseFont || 'Calibri');
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}>` +
+    `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}"/><w:sz w:val="${Math.round(baseSize * 2)}"/><w:lang w:val="id-ID"/></w:rPr></w:rPrDefault>` +
+    `<w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>` +
+    `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>` +
+    `<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="0"/></w:pPr></w:style>` +
+    `<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:outlineLvl w:val="1"/></w:pPr></w:style>` +
+    `</w:styles>`;
+  const z = new JSZip();
+  const add = (n, d) => z.file(n, d, { createFolders: false }); // tanpa entri folder, seperti file Word asli
+  add('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+    '<Default Extension="jpeg" ContentType="image/jpeg"/>' +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>');
+  add('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  add('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    images.map((_, i) => `<Relationship Id="rIdImg${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${i+1}.jpeg"/>`).join('') +
+    '</Relationships>');
+  add('word/styles.xml', styles);
+  images.forEach((img, i) => add(`word/media/image${i+1}.jpeg`, img));
+  add('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>${bodyXml}${sect}</w:body></w:document>`);
+  return z.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+}
+
+async function pdfToDocxEditable(pdf, keepBreaks, onProgress){
+  const pages = [];
+  for (let n = 1; n <= pdf.numPages; n++){
+    onProgress((n-1) / pdf.numPages, `Membaca teks halaman ${n} dari ${pdf.numPages}…`);
+    const page = await pdf.getPage(n);
+    pages.push(await extractPageParas(page));
+    page.cleanup();
+    await tick();
+  }
+  const chars = pages.reduce((s, p) => s + p.chars, 0);
+  // ukuran & huruf utama = yang paling banyak dipakai
+  const sizeCount = {}, fontCount = {};
+  pages.forEach(p => p.paras.forEach(pa => pa.runs.forEach(r => {
+    sizeCount[r.size] = (sizeCount[r.size] || 0) + r.text.length;
+    if (r.font) fontCount[r.font] = (fontCount[r.font] || 0) + r.text.length;
+  })));
+  const top = o => Object.entries(o).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const body = +(top(sizeCount) || 11), baseFont = top(fontCount) || 'Calibri';
+
+  const first = pages[0] || { w: 595, h: 842 };
+  const withText = pages.filter(p => p.paras.length);
+  const leftM = withText.length ? Math.min(...withText.map(p => p.left)) : 72;
+  const rightM = withText.length ? Math.min(...withText.map(p => p.w - p.right)) : 72;
+  const clampM = v => Math.max(36, Math.min(108, v));
+  const margins = { top: 54, bottom: 54, left: clampM(leftM), right: clampM(rightM) };
+
+  let xml = '', paraCount = 0;
+  pages.forEach((p, pi) => {
+    p.paras.forEach((pa, i) => {
+      const big = pa.size >= body * 1.4, mid = pa.size >= body * 1.15 && pa.runs.every(r => r.bold || !r.text.trim());
+      const style = big ? 'Heading1' : mid ? 'Heading2' : '';
+      const ppr = (style ? `<w:pStyle w:val="${style}"/>` : '') +
+        (keepBreaks && pi > 0 && i === 0 ? '<w:pageBreakBefore/>' : '') +
+        `<w:spacing w:before="${Math.round(Math.min(pa.spaceBefore, 36) * 20)}" w:after="0"/>` +
+        (pa.indent > 6 ? `<w:ind w:left="${Math.round(pa.indent * 20)}"/>` : '') +
+        (pa.align !== 'left' ? `<w:jc w:val="${pa.align}"/>` : '');
+      xml += `<w:p><w:pPr>${ppr}</w:pPr>${pa.runs.map(docxRun).join('')}</w:p>`;
+      paraCount++;
+    });
+  });
+  if (!xml) xml = '<w:p/>';
+  onProgress(1, 'Menyusun file Word…');
+  const blob = await buildDocx({ bodyXml: xml, pageW: first.w, pageH: first.h, margins, images: [], baseFont, baseSize: body });
+  return { blob, chars, info: `${pdf.numPages} halaman · ${paraCount} paragraf · huruf utama ${baseFont} ${body} pt` };
+}
+
+async function pdfToDocxImages(pdf, onProgress){
+  const images = []; let xml = '';
+  const first = (await pdf.getPage(1)).getViewport({ scale: 1 });
+  for (let n = 1; n <= pdf.numPages; n++){
+    onProgress((n-1) / pdf.numPages, `Merender halaman ${n} dari ${pdf.numPages}…`);
+    const page = await pdf.getPage(n);
+    const base = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: 150 / 72 });
+    const cv = document.createElement('canvas'); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: g, viewport: vp }).promise; page.cleanup();
+    images.push(new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85))).arrayBuffer()));
+    cv.width = cv.height = 0;
+    // muat di halaman pertama (sedikit lebih kecil supaya tak tumpah ke halaman kosong)
+    const k = Math.min(first.width / base.width, first.height / base.height) * 0.98;
+    const cx = Math.round(base.width * k * 12700), cy = Math.round(base.height * k * 12700);
+    xml += `<w:p><w:pPr>${n > 1 ? '<w:pageBreakBefore/>' : ''}<w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/></w:pPr><w:r><w:drawing>` +
+      `<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${n}" name="Halaman ${n}"/>` +
+      `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>` +
+      `<pic:nvPicPr><pic:cNvPr id="${n}" name="halaman${n}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr>` +
+      `<pic:blipFill><a:blip r:embed="rIdImg${n}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+      `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+    await tick();
+  }
+  onProgress(1, 'Menyusun file Word…');
+  const blob = await buildDocx({ bodyXml: xml, pageW: first.width, pageH: first.height, margins: { top: 0, bottom: 0, left: 0, right: 0 }, images, baseFont: 'Calibri', baseSize: 11 });
+  return { blob, chars: null, info: `${pdf.numPages} halaman dijadikan gambar 150 dpi` };
+}
+
+function renderPdfToWord(el){
+  el.innerHTML = `
+    <h2>PDF → Word</h2>
+    <p class="sub">Ubah PDF jadi file Word (.docx) yang bisa diedit. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="application/pdf,.pdf" hidden>
+      <strong>Klik atau tarik satu file PDF ke sini</strong>
+      <span>Paling bagus untuk PDF yang dibuat dari Word/komputer (bukan hasil scan)</span>
+    </label>
+    <div id="panel" hidden>
+      <p class="meta" id="info" style="margin:14px 0 0"></p>
+      <div class="opts">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="edit" selected>Bisa diedit (teks)</option>
+          <option value="persis">Tampilan persis (halaman jadi gambar)</option>
+        </select>
+        <label id="brkWrap" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="brk" checked> Pisah halaman seperti PDF</label>
+        <span class="spacer"></span>
+        <button class="btn primary" id="go">Konversi ke Word</button>
+      </div>
+      <div class="bar" id="bar" hidden><i></i></div>
+      <div id="out"></div>
+    </div>
+    <p class="note"><b>Bisa diedit:</b> teks, paragraf, judul, tebal/miring, ukuran & jenis huruf, serta rata tengah/kanan dibawa ke Word. Gambar, tabel (jadi teks biasa), dan tata letak kolom tidak ikut persis — cek & rapikan di Word. PDF hasil scan tidak punya teks, jadi pakai <b>Tampilan persis</b> (tidak bisa diedit).</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), out = $('#out');
+  let pdf = null, file = null, resultUrl = null;
+
+  $('#mode').onchange = () => { $('#brkWrap').style.visibility = $('#mode').value === 'edit' ? 'visible' : 'hidden'; };
+
+  async function openPdf(f){
+    if (!f) return;
+    $('#panel').hidden = false; out.innerHTML = ''; $('#go').disabled = true;
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)){ $('#info').innerHTML = '<span class="status err">✗ File ini bukan PDF.</span>'; return; }
+    $('#info').textContent = 'Membuka PDF…';
+    try {
+      const lib = await getPdfjs();
+      if (pdf) pdf.destroy();
+      pdf = await lib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
+      file = f;
+      $('#info').textContent = `${f.name} · ${pdf.numPages} halaman · ${fmtSize(f.size)}`;
+      $('#go').disabled = false;
+    } catch(e){
+      pdf = null;
+      $('#info').innerHTML = `<span class="status err">✗ ${e && e.name === 'PasswordException' ? 'PDF ini dikunci password.' : 'PDF tidak bisa dibuka (rusak atau tidak didukung).'}</span>`;
+    }
+  }
+
+  async function convert(){
+    const btn = $('#go'), bar = $('#bar');
+    btn.disabled = true; bar.hidden = false; bar.firstElementChild.style.width = '0';
+    const onProgress = (p, m) => { bar.firstElementChild.style.width = (p*100).toFixed(1) + '%'; out.innerHTML = `<p class="meta">${m}</p>`; };
+    try {
+      const mode = $('#mode').value;
+      const res = mode === 'edit' ? await pdfToDocxEditable(pdf, $('#brk').checked, onProgress) : await pdfToDocxImages(pdf, onProgress);
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      resultUrl = URL.createObjectURL(res.blob);
+      const name = file.name.replace(/\.pdf$/i, '') + '.docx';
+      const scanned = mode === 'edit' && res.chars < 30 * pdf.numPages;
+      out.innerHTML = `
+        <div class="item" style="margin-top:14px">
+          <div class="row">
+            <div class="name">📝 ${esc(name)}</div>
+            <span class="meta">${fmtSize(res.blob.size)}</span>
+            <a class="btn primary" href="${resultUrl}" download="${esc(name)}">Unduh Word</a>
+          </div>
+          <p class="meta" style="margin:6px 0 0">${esc(res.info)}</p>
+          ${scanned ? '<p class="status err" style="margin:6px 0 0">Hampir tidak ada teks yang bisa diambil — PDF ini kemungkinan hasil scan/foto. Coba mode "Tampilan persis".</p>' : ''}
+          <p class="meta" style="margin:10px 0 4px">Pratinjau isi:</p>
+          <div class="paperwrap" style="padding:12px 0;max-height:420px;overflow:auto"><div class="paper doc" id="pv" style="width:180mm;padding:12mm;min-height:0"></div></div>
+        </div>`;
+      // pratinjau: baca balik .docx dengan mammoth (sekalian memastikan file valid)
+      try {
+        await loadScript('lib/mammoth.browser.min.js');
+        const pv = await mammoth.convertToHtml({ arrayBuffer: await res.blob.arrayBuffer() });
+        el.querySelector('#pv').innerHTML = cleanPastedHtml(pv.value).html || '<p class="meta">(kosong)</p>';
+      } catch(e){ el.querySelector('#pv').textContent = 'Pratinjau tidak tersedia.'; }
+    } catch(e){
+      out.innerHTML = `<p class="status err">✗ ${esc(e.message || String(e))}</p>`;
+    }
+    bar.hidden = true; btn.disabled = false;
+  }
+
+  pick.onchange = () => { openPdf(pick.files[0]); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => openPdf(e.dataTransfer.files[0]));
+  $('#go').onclick = convert;
 }
 
 openTool((location.hash || '').slice(1));
