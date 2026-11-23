@@ -69,7 +69,7 @@
   .bar{height:6px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:8px}
   .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
   .thumb{width:56px;height:56px;object-fit:cover;border-radius:8px;background:var(--line);flex:none}
-  .thumb:not([src]){visibility:hidden}
+  .thumb:not([src]),.thumb[src=""]{visibility:hidden}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:14px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px}
   .card img{width:100%;aspect-ratio:3/4;object-fit:contain;background:var(--line);border-radius:6px}
@@ -711,13 +711,55 @@ const IMG_FORMATS = {
   webp: { mime: 'image/webp', ext: 'webp', lossy: true },
 };
 
+/* ---- HEIC / HEIF (foto iPhone & Samsung mode "efisiensi tinggi") ---- */
+const isHeicName = f => /\.(heic|heif|hif)$/i.test(f.name || '') || /^image\/hei[cf]/i.test(f.type || '');
+const isImageFile = f => (f.type || '').startsWith('image/') || isHeicName(f);
+async function looksLikeHeic(file){
+  // isi file: "....ftyp" + merek heic/heix/mif1/msf1/hevc
+  const h = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  const s = String.fromCharCode(...h);
+  return s.slice(4, 8) === 'ftyp' && /heic|heix|hevc|heim|heis|mif1|msf1/.test(s.slice(8));
+}
+let _heif = null;
+async function getHeif(){
+  if (!_heif){
+    await loadScript('lib/libheif-bundle.js'); // libheif (LGPL) + decoder HEVC, dimuat hanya saat ada file HEIC
+    _heif = Promise.resolve(libheif());
+  }
+  return _heif;
+}
+const _heicCache = new WeakMap(); // file → ImageBitmap (decode HEIC lambat, jadi disimpan selama halaman terbuka)
+function decodeHeic(file){
+  if (_heicCache.has(file)) return _heicCache.get(file);
+  const p = (async () => {
+    const lib = await getHeif();
+    const dec = new lib.HeifDecoder();
+    const imgs = dec.decode(new Uint8Array(await file.arrayBuffer()));
+    if (!imgs || !imgs.length) throw new Error('File HEIC tidak bisa dibaca (rusak atau format tidak didukung).');
+    const im = imgs.find(i => typeof i.is_primary === 'function' && i.is_primary()) || imgs[0];
+    const w = im.get_width(), h = im.get_height();
+    const out = await new Promise((res, rej) =>
+      im.display({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h },
+        d => d ? res(d) : rej(new Error('Gagal membuka HEIC.'))));
+    imgs.forEach(i => { try { i.free(); } catch(e){} });
+    const bmp = await createImageBitmap(new ImageData(out.data, w, h));
+    bmp._keep = true; // jangan di-close: dipakai ulang kalau pengaturan diubah
+    return bmp;
+  })();
+  _heicCache.set(file, p);
+  p.catch(() => _heicCache.delete(file));
+  return p;
+}
+
 async function loadImage(file){
+  // Safari bisa membuka HEIC sendiri; Chrome/Edge/Firefox belum → pakai libheif
   try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); }
   catch(e){
+    if (isHeicName(file) || await looksLikeHeic(file)) return decodeHeic(file);
     const url = URL.createObjectURL(file);
     try {
       const img = new Image(); img.src = url; await img.decode(); return img;
-    } catch(e2){ throw new Error('Format gambar tidak didukung browser (mis. HEIC).'); }
+    } catch(e2){ throw new Error('Format gambar ini tidak didukung browser.'); }
     finally { URL.revokeObjectURL(url); }
   }
 }
@@ -734,7 +776,7 @@ async function convertImage(file, { fmt, quality, maxSide }){
   if (F.mime === 'image/jpeg'){ g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); } // JPG tak punya transparansi
   g.imageSmoothingQuality = 'high';
   g.drawImage(src, 0, 0, w, h);
-  if (src.close) src.close();
+  if (src.close && !src._keep) src.close();
   const blob = await new Promise(r => cv.toBlob(r, F.mime, F.lossy ? quality/100 : undefined));
   if (!blob || blob.type !== F.mime) throw new Error('Browser ini tidak bisa membuat ' + fmt.toUpperCase() + '.');
   return { blob, w, h };
@@ -743,11 +785,11 @@ async function convertImage(file, { fmt, quality, maxSide }){
 function renderImageConvert(el){
   el.innerHTML = `
     <h2>Konversi Gambar</h2>
-    <p class="sub">Ubah gambar antar format JPG, PNG, dan WEBP, sekalian kecilkan ukurannya. Diproses di browser — tidak di-upload.</p>
+    <p class="sub">Ubah gambar antar format JPG, PNG, dan WEBP — termasuk foto <b>HEIC</b> dari iPhone & Samsung jadi JPG — sekalian kecilkan ukurannya. Diproses di browser — tidak di-upload.</p>
     <label class="drop" id="drop">
-      <input type="file" id="pick" accept="image/*" multiple hidden>
+      <input type="file" id="pick" accept="image/*,.heic,.heif" multiple hidden>
       <strong>Klik atau tarik gambar ke sini</strong>
-      <span>JPG, PNG, WEBP (juga GIF, BMP, AVIF) · bisa banyak file sekaligus</span>
+      <span>JPG, PNG, WEBP, <b>HEIC/HEIF</b> (juga GIF, BMP, AVIF) · bisa banyak file sekaligus</span>
     </label>
     <div class="opts">
       <label for="fmt">Jadi</label>
@@ -822,7 +864,14 @@ function renderImageConvert(el){
   }
 
   function addFiles(files){
+    files = [...files].filter(isImageFile);
+    if (!files.length) return;
     if (!entries.length) list.innerHTML = '';
+    // foto HEIC biasanya ingin dijadikan JPG → pilih JPG otomatis selama format belum diubah sendiri
+    if (!fmtTouched && files.some(isHeicName) && $('#fmt').value !== 'jpg'){
+      $('#fmt').value = 'jpg'; refresh();
+      if (entries.length) processAll();
+    }
     const fresh = [];
     for (const f of files){
       const item = document.createElement('div');
@@ -853,7 +902,8 @@ function renderImageConvert(el){
 
   $('#q').oninput = () => { $('#qv').textContent = $('#q').value + '%'; };
   $('#q').onchange = processAll;
-  $('#fmt').onchange = () => { refresh(); processAll(); };
+  let fmtTouched = false;
+  $('#fmt').onchange = () => { fmtTouched = true; refresh(); processAll(); };
   $('#max').onchange = processAll;
 
   $('#all').onclick = async () => {
@@ -914,9 +964,9 @@ function renderImageToPdf(el){
     <h2>Gambar → PDF</h2>
     <p class="sub">Gabungkan banyak gambar jadi satu file PDF, satu gambar per halaman. Diproses di browser — tidak di-upload.</p>
     <label class="drop" id="drop">
-      <input type="file" id="pick" accept="image/*" multiple hidden>
+      <input type="file" id="pick" accept="image/*,.heic,.heif" multiple hidden>
       <strong>Klik atau tarik gambar ke sini</strong>
-      <span>JPG, PNG, WEBP, GIF, BMP · urutan bisa diatur setelah ditambahkan</span>
+      <span>JPG, PNG, WEBP, HEIC, GIF, BMP · urutan bisa diatur setelah ditambahkan</span>
     </label>
     <div class="opts">
       <label for="size">Kertas</label>
@@ -1000,8 +1050,19 @@ function renderImageToPdf(el){
 
   function addFiles(files){
     for (const f of files){
-      if (!f.type.startsWith('image/')) continue;
-      items.push({ file: f, thumb: URL.createObjectURL(f) });
+      if (!isImageFile(f)) continue;
+      const it = { file: f, thumb: URL.createObjectURL(f) };
+      items.push(it);
+      if (isHeicName(f)){
+        // browser (selain Safari) tak bisa menampilkan HEIC → buat thumbnail kecil dari hasil decode
+        it.thumb = '';
+        decodeHeic(f).then(bmp => {
+          const c = document.createElement('canvas'), k = 112 / Math.max(bmp.width, bmp.height);
+          c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+          c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+          c.toBlob(b => { it.thumb = URL.createObjectURL(b); draw(); }, 'image/jpeg', 0.8);
+        }).catch(() => {});
+      }
     }
     draw();
   }
