@@ -1972,9 +1972,12 @@ function fontFamilyFromPdf(name){
   if (!name) return '';
   let n = name.replace(/^[A-Z]{6}\+/, '').split(/[-,]/)[0].replace(/(PSMT|PS|MT)$/, '');
   n = n.replace(/([a-z])([A-Z])/g, '$1 $2').trim();
-  if (/^(Helvetica|Arial)/i.test(n)) return 'Arial';
-  if (/^Times/i.test(n)) return 'Times New Roman';
-  if (/^Courier/i.test(n)) return 'Courier New';
+  // huruf "kembaran" (ukuran hurufnya sama persis) → nama yang ada di Windows/Word
+  if (/^(Helvetica|Arial|Liberation Sans|Arimo|Nimbus Sans)/i.test(n)) return 'Arial';
+  if (/^(Times|Liberation Serif|Tinos|Nimbus Roman)/i.test(n)) return 'Times New Roman';
+  if (/^(Courier|Liberation Mono|Cousine|Nimbus Mono)/i.test(n)) return 'Courier New';
+  if (/^Carlito/i.test(n)) return 'Calibri';
+  if (/^Caladea/i.test(n)) return 'Cambria';
   if (/^(Symbol|Zapf|g_d)/i.test(n)) return '';
   return n;
 }
@@ -2071,8 +2074,183 @@ async function extractPageParas(page){
 }
 
 function docxRun(r){
+  // urutan elemen rPr wajib sesuai skema Word: rFonts, b, i, color, spacing, sz, szCs
   const f = r.font ? `<w:rFonts w:ascii="${xmlEsc(r.font)}" w:hAnsi="${xmlEsc(r.font)}" w:cs="${xmlEsc(r.font)}"/>` : '';
-  return `<w:r><w:rPr>${f}${r.bold ? '<w:b/>' : ''}${r.italic ? '<w:i/>' : ''}<w:sz w:val="${Math.round(r.size * 2)}"/><w:szCs w:val="${Math.round(r.size * 2)}"/></w:rPr><w:t xml:space="preserve">${xmlEsc(r.text)}</w:t></w:r>`;
+  const color = r.color && r.color !== '000000' ? `<w:color w:val="${r.color}"/>` : '';
+  const sp = r.spacing ? `<w:spacing w:val="${r.spacing}"/>` : '';
+  return `<w:r><w:rPr>${f}${r.bold ? '<w:b/>' : ''}${r.italic ? '<w:i/>' : ''}${color}${sp}<w:sz w:val="${Math.round(r.size * 2)}"/><w:szCs w:val="${Math.round(r.size * 2)}"/></w:rPr><w:t xml:space="preserve">${xmlEsc(r.text)}</w:t></w:r>`;
+}
+
+/* ---- mode "tata letak persis": gambar latar tanpa teks + teks yang bisa diedit di posisi aslinya ---- */
+const _measureCtx = document.createElement('canvas').getContext('2d');
+function measureTextPt(text, r){
+  _measureCtx.font = `${r.italic ? 'italic ' : ''}${r.bold ? 'bold ' : ''}100px ${r.font ? `"${r.font}", ` : ''}Calibri, Carlito, sans-serif`;
+  return _measureCtx.measureText(text).width * r.size / 100;
+}
+// apakah huruf ini terpasang di komputer ini? (lebar teks dengan cadangan berbeda = tidak terpasang)
+const _fontOk = {};
+function fontInstalled(name){
+  if (!name) return false;
+  if (name in _fontOk) return _fontOk[name];
+  const probe = 'mmmmmmmmmmlli WQ@#0123';
+  const w = fb => { _measureCtx.font = `72px "${name}", ${fb}`; return _measureCtx.measureText(probe).width; };
+  return _fontOk[name] = w('monospace') === w('serif') && w('serif') === w('sans-serif');
+}
+// huruf yang tak terpasang diganti padanan aman supaya tampilan di Word bisa diperkirakan
+function usableFont(name){
+  if (fontInstalled(name)) return name;
+  return /serif|roman|times|georgia|garamond|book|cambria|minion|palatino/i.test(name || '') && !/sans/i.test(name) ? 'Times New Roman' : 'Arial';
+}
+const DESCENT = 0.22; // perkiraan descent huruf (bagian di bawah garis dasar), relatif ke ukuran
+
+async function renderPageCanvas(page, vp, withText){
+  const c = document.createElement('canvas');
+  c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  const g = c.getContext('2d', { willReadFrequently: true });
+  if (!withText){ g.fillText = () => {}; g.strokeText = () => {}; } // pdf.js menggambar teks lewat fillText
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: g, viewport: vp }).promise;
+  return { c, g };
+}
+
+async function layoutPageXml(page, pageIdx, scale, imgIndex){
+  const base = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale });
+  const A = await renderPageCanvas(page, vp, true);   // halaman lengkap
+  const B = await renderPageCanvas(page, vp, false);  // tanpa teks → jadi gambar latar
+  const W = A.c.width, H = A.c.height;
+  const da = A.g.getImageData(0, 0, W, H).data, db = B.g.getImageData(0, 0, W, H).data;
+
+  const tc = await page.getTextContent();
+  try { await page.getOperatorList(); } catch(e){}
+  const fcache = {};
+  const finfo = fn => {
+    if (fcache[fn]) return fcache[fn];
+    let f = null; try { f = page.commonObjs.get(fn); } catch(e){}
+    const name = (f && f.name) || '';
+    return fcache[fn] = {
+      bold: !!(f && (f.bold || f.black)) || /bold|black|heavy|semibold|demi/i.test(name),
+      italic: !!(f && f.italic) || /italic|oblique/i.test(name),
+      font: usableFont(fontFamilyFromPdf(name)),
+    };
+  };
+
+  // warna teks = rata-rata piksel yang berubah saat teks dihapus; tak ada perubahan = teks tak terlihat
+  function colorAt(x0, y0, x1, y1){
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0));
+    x1 = Math.min(W, Math.ceil(x1)); y1 = Math.min(H, Math.ceil(y1));
+    let best = [];
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++){
+      const i = (y * W + x) * 4;
+      const d = Math.abs(da[i] - db[i]) + Math.abs(da[i+1] - db[i+1]) + Math.abs(da[i+2] - db[i+2]);
+      if (d > 90) best.push([d, da[i], da[i+1], da[i+2]]);
+    }
+    if (best.length < 2) return null;
+    best.sort((a, b) => b[0] - a[0]); best = best.slice(0, Math.max(2, Math.ceil(best.length * 0.4)));
+    const avg = k => Math.round(best.reduce((s, p) => s + p[k], 0) / best.length);
+    let [r, g, b] = [avg(1), avg(2), avg(3)];
+    if (Math.max(r, g, b) < 60 && Math.max(r, g, b) - Math.min(r, g, b) < 25) [r, g, b] = [0, 0, 0];
+    return [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+  }
+
+  const items = [];
+  for (const it of tc.items){
+    if (!it.str || !it.str.trim() && !it.str.length) continue;
+    const t = pdfjsLib.Util.transform(base.transform, it.transform);
+    const size = Math.hypot(t[2], t[3]) || it.height || 10;
+    const rotated = Math.abs(t[1]) > 0.01 || Math.abs(t[2]) > 0.01;
+    const x = t[4], y = t[5], w = it.width;
+    const box = [x * scale, (y - size * 0.95) * scale, (x + w) * scale, (y + size * 0.3) * scale];
+    if (rotated){
+      // teks miring/diputar tidak bisa jadi teks Word di posisi sama → kembalikan ke gambar latar
+      const r = Math.hypot(w, size) * scale * 1.1;
+      B.g.drawImage(A.c, x * scale - r, y * scale - r, r * 2, r * 2, x * scale - r, y * scale - r, r * 2, r * 2);
+      continue;
+    }
+    if (!it.str.trim()) continue; // item spasi dari pdf.js bisa selebar celah antar kolom; spasi dihitung sendiri dari jarak
+    const color = colorAt(...box);
+    if (!color) continue; // teks tak terlihat (mis. lapisan OCR di PDF hasil scan)
+    items.push({ str: it.str, x, y, w, size, color, ...finfo(it.fontName) });
+  }
+
+  // kelompokkan per baris, lalu pecah baris jadi segmen kalau ada jarak lebar (kolom/tabel)
+  items.sort((a, b) => a.y - b.y || a.x - b.x);
+  const lines = [];
+  for (const it of items){
+    const ln = lines.find(l => Math.abs(l.y - it.y) <= Math.max(l.size, it.size) * 0.3);
+    if (ln){ ln.items.push(it); ln.size = Math.max(ln.size, it.size); } else lines.push({ y: it.y, size: it.size, items: [it] });
+  }
+  let xml = '';
+  const pvSegs = []; // untuk pratinjau di halaman web
+  for (const ln of lines){
+    ln.items.sort((a, b) => a.x - b.x);
+    const segs = []; let seg = null, prevEnd = null;
+    for (const it of ln.items){
+      const gap = prevEnd === null ? 0 : it.x - prevEnd;
+      if (!seg || gap > it.size * 1.6){ seg = { x: it.x, y: ln.y, size: ln.size, runs: [], end: it.x }; segs.push(seg); prevEnd = null; }
+      let s = it.str;
+      const lastRun = seg.runs[seg.runs.length - 1];
+      if (prevEnd !== null && gap > it.size * 0.2 && lastRun && !/\s$/.test(lastRun.text) && !/^\s/.test(s)) s = ' ' + s;
+      const sz = Math.round(it.size * 2) / 2;
+      if (lastRun && lastRun.bold === it.bold && lastRun.italic === it.italic && lastRun.size === sz && lastRun.font === it.font && lastRun.color === it.color) lastRun.text += s;
+      else seg.runs.push({ text: s, bold: it.bold, italic: it.italic, size: sz, font: it.font, color: it.color });
+      prevEnd = it.x + it.w; seg.end = prevEnd;
+    }
+    for (const sg of segs){
+      const text = sg.runs.map(r => r.text).join('');
+      if (!text.trim()) continue;
+      // samakan lebar teks Word dengan lebar asli di PDF lewat jarak antar huruf
+      const want = sg.end - sg.x, have = sg.runs.reduce((s, r) => s + measureTextPt(r.text, r), 0);
+      const chars = Math.max(1, text.length);
+      if (have > 0 && Math.abs(want - have) / want > 0.015){
+        const sp = Math.max(-40, Math.min(40, Math.round((want - have) / chars * 20)));
+        sg.runs.forEach(r => r.spacing = sp);
+      }
+      const lineH = sg.size * 1.2;
+      const top = sg.y - (lineH - sg.size * DESCENT);
+      pvSegs.push({ x: sg.x, top, lineH, runs: sg.runs });
+      xml += `<w:p><w:pPr><w:framePr w:hSpace="0" w:vSpace="0" w:wrap="around" w:hAnchor="page" w:vAnchor="page" w:x="${Math.round(sg.x * 20)}" w:y="${Math.round(top * 20)}"/>` +
+        `<w:spacing w:before="0" w:after="0" w:line="${Math.round(lineH * 20)}" w:lineRule="exact"/></w:pPr>` +
+        sg.runs.map(docxRun).join('') + '</w:p>';
+    }
+  }
+
+  const jpg = new Uint8Array(await (await new Promise(r => B.c.toBlob(r, 'image/jpeg', 0.85))).arrayBuffer());
+  A.c.width = A.c.height = B.c.width = B.c.height = 0;
+  const cx = Math.round(base.width * 12700), cy = Math.round(base.height * 12700);
+  const anchor = `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr><w:r><w:drawing>` +
+    `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="1" layoutInCell="1" allowOverlap="1">` +
+    `<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>` +
+    `<wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="${cx}" cy="${cy}"/>` +
+    `<wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="${imgIndex}" name="Latar halaman ${pageIdx}"/><wp:cNvGraphicFramePr/>` +
+    `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>` +
+    `<pic:nvPicPr><pic:cNvPr id="${imgIndex}" name="latar${pageIdx}.jpeg"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="rIdImg${imgIndex}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    `</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>`;
+  return { xml: anchor + xml, jpg, pvSegs, w: base.width, h: base.height, segs: (xml.match(/<w:framePr/g) || []).length };
+}
+
+async function pdfToDocxLayout(pdf, onProgress){
+  const images = []; let body = '', segs = 0, last = null; let preview = null;
+  const sectXml = (w, h) => `<w:sectPr><w:pgSz w:w="${Math.round(w*20)}" w:h="${Math.round(h*20)}"${w > h ? ' w:orient="landscape"' : ''}/>` +
+    `<w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>`;
+  for (let n = 1; n <= pdf.numPages; n++){
+    onProgress((n-1) / pdf.numPages, `Menyusun halaman ${n} dari ${pdf.numPages}…`);
+    const page = await pdf.getPage(n);
+    const r = await layoutPageXml(page, n, 150 / 72, n);
+    page.cleanup();
+    images.push(r.jpg); segs += r.segs;
+    if (n === 1) preview = { jpg: r.jpg, segs: r.pvSegs, w: r.w, h: r.h };
+    // tiap halaman = 1 section (ukuran kertas bisa beda-beda); paragraf penutup membawa sectPr halaman itu
+    if (last) body += `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/>${sectXml(last.w, last.h)}</w:pPr></w:p>`;
+    body += r.xml;
+    last = r;
+    await tick();
+  }
+  body += `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p>`;
+  onProgress(1, 'Menyusun file Word…');
+  const blob = await buildDocx({ bodyXml: body, pageW: last.w, pageH: last.h, margins: { top: 0, bottom: 0, left: 0, right: 0 }, images, baseFont: 'Calibri', baseSize: 11 });
+  return { blob, preview, chars: segs ? Infinity : 0, info: `${pdf.numPages} halaman · ${segs} blok teks bisa diedit di atas gambar latar` };
 }
 
 async function buildDocx({ bodyXml, pageW, pageH, margins, images, baseFont, baseSize }){
@@ -2196,17 +2374,20 @@ function renderPdfToWord(el){
       <div class="opts">
         <label for="mode">Mode</label>
         <select id="mode">
-          <option value="edit" selected>Bisa diedit (teks)</option>
-          <option value="persis">Tampilan persis (halaman jadi gambar)</option>
+          <option value="layout" selected>Tata letak persis — teks bisa diedit</option>
+          <option value="edit">Alur teks biasa — enak untuk edit panjang</option>
+          <option value="persis">Gambar saja — tidak bisa diedit</option>
         </select>
-        <label id="brkWrap" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="brk" checked> Pisah halaman seperti PDF</label>
+        <label id="brkWrap" style="display:flex;gap:6px;align-items:center;visibility:hidden"><input type="checkbox" id="brk" checked> Pisah halaman seperti PDF</label>
         <span class="spacer"></span>
         <button class="btn primary" id="go">Konversi ke Word</button>
       </div>
       <div class="bar" id="bar" hidden><i></i></div>
       <div id="out"></div>
     </div>
-    <p class="note"><b>Bisa diedit:</b> teks, paragraf, judul, tebal/miring, ukuran & jenis huruf, serta rata tengah/kanan dibawa ke Word. Gambar, tabel (jadi teks biasa), dan tata letak kolom tidak ikut persis — cek & rapikan di Word. PDF hasil scan tidak punya teks, jadi pakai <b>Tampilan persis</b> (tidak bisa diedit).</p>`;
+    <p class="note"><b>Tata letak persis:</b> gambar, garis, tabel, dan warna latar ditaruh sebagai gambar latar di posisi aslinya; setiap baris teks ditaruh tepat di atasnya sebagai teks Word yang bisa diedit (huruf, ukuran, tebal/miring, warna ikut). Cocok untuk brosur, sertifikat, formulir. Kalau tulisan diedit jadi lebih panjang, baris tidak otomatis turun.<br>
+    <b>Alur teks biasa:</b> teks disusun jadi paragraf biasa — enak untuk menulis ulang/mengedit panjang, tapi gambar & tata letak tidak ikut.<br>
+    <b>Gambar saja:</b> tampilan sama persis, tidak bisa diedit — untuk PDF hasil scan.</p>`;
 
   const $ = s => el.querySelector(s);
   const drop = $('#drop'), pick = $('#pick'), out = $('#out');
@@ -2238,11 +2419,13 @@ function renderPdfToWord(el){
     const onProgress = (p, m) => { bar.firstElementChild.style.width = (p*100).toFixed(1) + '%'; out.innerHTML = `<p class="meta">${m}</p>`; };
     try {
       const mode = $('#mode').value;
-      const res = mode === 'edit' ? await pdfToDocxEditable(pdf, $('#brk').checked, onProgress) : await pdfToDocxImages(pdf, onProgress);
+      const res = mode === 'layout' ? await pdfToDocxLayout(pdf, onProgress)
+        : mode === 'edit' ? await pdfToDocxEditable(pdf, $('#brk').checked, onProgress)
+        : await pdfToDocxImages(pdf, onProgress);
       if (resultUrl) URL.revokeObjectURL(resultUrl);
       resultUrl = URL.createObjectURL(res.blob);
       const name = file.name.replace(/\.pdf$/i, '') + '.docx';
-      const scanned = mode === 'edit' && res.chars < 30 * pdf.numPages;
+      const scanned = mode !== 'persis' && res.chars < 30 * pdf.numPages;
       out.innerHTML = `
         <div class="item" style="margin-top:14px">
           <div class="row">
@@ -2251,12 +2434,28 @@ function renderPdfToWord(el){
             <a class="btn primary" href="${resultUrl}" download="${esc(name)}">Unduh Word</a>
           </div>
           <p class="meta" style="margin:6px 0 0">${esc(res.info)}</p>
-          ${scanned ? '<p class="status err" style="margin:6px 0 0">Hampir tidak ada teks yang bisa diambil — PDF ini kemungkinan hasil scan/foto. Coba mode "Tampilan persis".</p>' : ''}
-          <p class="meta" style="margin:10px 0 4px">Pratinjau isi:</p>
-          <div class="paperwrap" style="padding:12px 0;max-height:420px;overflow:auto"><div class="paper doc" id="pv" style="width:180mm;padding:12mm;min-height:0"></div></div>
+          ${scanned ? '<p class="status err" style="margin:6px 0 0">Hampir tidak ada teks yang bisa diambil — PDF ini kemungkinan hasil scan/foto. Coba mode "Gambar saja".</p>' : ''}
+          <p class="meta" style="margin:10px 0 4px">${res.preview ? 'Pratinjau halaman 1 (teks bisa dipilih = teks yang bisa diedit di Word):' : 'Pratinjau isi:'}</p>
+          <div class="paperwrap" style="padding:12px 0;max-height:520px;overflow:auto"><div class="paper doc" id="pv" style="width:180mm;padding:12mm;min-height:0"></div></div>
         </div>`;
-      // pratinjau: baca balik .docx dengan mammoth (sekalian memastikan file valid)
-      try {
+      if (res.preview){
+        // gambar latar + teks di posisi yang sama seperti di file Word
+        const p = res.preview, pv = el.querySelector('#pv');
+        pv.style.padding = '0'; pv.style.position = 'relative'; pv.style.overflow = 'hidden';
+        pv.style.width = `min(100% - 24px, ${Math.round(p.w * 4 / 3)}px)`; pv.style.maxWidth = 'none';
+        pv.style.aspectRatio = `${p.w} / ${p.h}`;
+        const bg = URL.createObjectURL(new Blob([p.jpg], { type: 'image/jpeg' }));
+        pv.innerHTML = `<img src="${bg}" alt="" style="position:absolute;inset:0;width:100%;height:100%;max-width:none">`;
+        const k = pv.clientWidth / p.w; // px per pt
+        for (const s of p.segs){
+          const d = document.createElement('div');
+          d.style.cssText = `position:absolute;left:${s.x * k}px;top:${s.top * k}px;line-height:${s.lineH * k}px;white-space:pre`;
+          d.innerHTML = s.runs.map(r => `<span style="font-family:'${r.font || 'Calibri'}';font-size:${r.size * k}px;` +
+            `${r.bold ? 'font-weight:bold;' : ''}${r.italic ? 'font-style:italic;' : ''}color:#${r.color || '000000'};` +
+            `${r.spacing ? `letter-spacing:${r.spacing / 20 * k}px;` : ''}">${esc(r.text)}</span>`).join('');
+          pv.appendChild(d);
+        }
+      } else try {
         await loadScript('lib/mammoth.browser.min.js');
         const pv = await mammoth.convertToHtml({ arrayBuffer: await res.blob.arrayBuffer() });
         el.querySelector('#pv').innerHTML = cleanPastedHtml(pv.value).html || '<p class="meta">(kosong)</p>';
