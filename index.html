@@ -68,6 +68,8 @@
   .doc p{margin:0 0 8pt}
   .doc table{border-collapse:collapse;max-width:100%}
   .doc td,.doc th{vertical-align:top;padding:2pt 5pt}
+  .doc td p,.doc th p{margin:0}
+  .doc table:not([style]) td,.doc table:not([style]) th{border:1px solid #444} /* tabel dari .docx tak bawa garis */
   .doc img{max-width:100%;height:auto}
   .doc .pagebreak{break-after:page;height:0;border-top:2px dashed #9aa0a6;margin:14px 0;position:relative}
   .doc .pagebreak::after{content:'pemisah halaman';position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#fff;color:#9aa0a6;font:11px system-ui;padding:0 6px}
@@ -1745,7 +1747,12 @@ function cleanPastedHtml(html){
 function renderWordToPdf(el){
   el.innerHTML = `
     <h2>Word → PDF</h2>
-    <p class="sub">Salin isi dokumen dari Word (Ctrl+A, Ctrl+C), tempel di kertas di bawah (Ctrl+V), lalu simpan sebagai PDF. Format seperti tebal, miring, judul, daftar, dan tabel ikut terbawa.</p>
+    <p class="sub">Dua cara: <b>buka file .docx</b> langsung, atau salin isi dokumen dari Word (Ctrl+A, Ctrl+C) lalu tempel di kertas (Ctrl+V). Setelah itu simpan sebagai PDF.</p>
+    <div class="opts">
+      <input type="file" id="docx" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+      <button class="btn primary" id="openDocx">📂 Buka file .docx</button>
+      <span class="meta">atau tarik file .docx ke kertas · atau tempel dari Word</span>
+    </div>
     <div class="opts">
       <label for="paper">Kertas</label>
       <select id="paper"><option value="a4" selected>A4</option><option value="f4">F4 / Folio</option><option value="letter">Letter</option></select>
@@ -1872,6 +1879,40 @@ function renderWordToPdf(el){
     if (b.dataset.act === 'break') insertHtml('<div class="pagebreak"></div><p><br></p>');
     else document.execCommand(b.dataset.cmd, false, b.dataset.val || null);
     saveDraft();
+  });
+
+  // buka .docx langsung (mammoth: gambar ikut sebagai data URI; perataan & warna tidak terbawa)
+  async function openDocx(file){
+    if (!file) return;
+    if (!/\.docx$/i.test(file.name)){
+      msg.innerHTML = /\.doc$/i.test(file.name)
+        ? '<span class="status err">File .doc (format lama) belum didukung — buka di Word lalu Simpan Sebagai .docx, atau salin-tempel isinya.</span>'
+        : '<span class="status err">Pilih file .docx.</span>';
+      return;
+    }
+    if (ed.textContent.trim() && !confirm('Ganti isi kertas dengan isi file ini?')) return;
+    msg.textContent = 'Membuka ' + file.name + '…';
+    try {
+      await loadScript('lib/mammoth.browser.min.js');
+      const res = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() }, {
+        styleMap: ["u => u", "p[style-name='Title'] => h1:fresh", "p[style-name='Subtitle'] => h2:fresh"],
+      });
+      const { html } = cleanPastedHtml(res.value);
+      ed.innerHTML = html || '<p><br></p>';
+      $('#fname').value = file.name.replace(/\.docx$/i, '');
+      const imgs = ed.querySelectorAll('img').length;
+      msg.innerHTML = `✓ ${esc(file.name)} dibuka${imgs ? ` · ${imgs} gambar` : ''}. <span class="meta">Perataan teks, warna, dan jenis huruf dari file tidak ikut — rapikan dengan toolbar kalau perlu.</span>`;
+      saveDraft();
+    } catch(e){
+      msg.innerHTML = '<span class="status err">✗ File tidak bisa dibuka (rusak atau dikunci password).</span>';
+    }
+  }
+  $('#openDocx').onclick = () => $('#docx').click();
+  $('#docx').onchange = () => { openDocx($('#docx').files[0]); $('#docx').value = ''; };
+  ed.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+  ed.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if (f && /\.docx?$/i.test(f.name)){ e.preventDefault(); openDocx(f); }
   });
 
   ['#paper', '#orient', '#margin', '#font'].forEach(s => $(s).addEventListener('change', layout));
