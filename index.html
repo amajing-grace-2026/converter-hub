@@ -1,0 +1,1686 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Converter Hub</title>
+<script src="lib/lame.min.js"></script>
+<script src="lib/gifenc.js"></script>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --ink:#1b1f27; --muted:#6b7280; --line:#e3e6eb;
+    --accent:#2f6fed; --accent-ink:#fff; --ok:#16a34a; --err:#dc2626; --soft:#eef3ff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#111418; --panel:#1a1e24; --ink:#e7e9ee; --muted:#9aa3b2; --line:#2a3039;
+      --accent:#5b8cff; --accent-ink:#0b1020; --ok:#4ade80; --err:#f87171; --soft:#1f2838; }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+  nav{background:var(--panel);border-right:1px solid var(--line);padding:20px 14px}
+  nav h1{font-size:17px;margin:0 6px 18px}
+  nav .group{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 8px 6px}
+  nav button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);
+    padding:9px 10px;border-radius:8px;font:inherit;cursor:pointer}
+  nav button:hover{background:var(--soft)}
+  nav button.active{background:var(--accent);color:var(--accent-ink);font-weight:600}
+  main{padding:28px;max-width:860px;width:100%}
+  h2{margin:0 0 4px;font-size:22px}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .drop{display:block;border:2px dashed var(--line);border-radius:14px;background:var(--panel);padding:34px 20px;text-align:center;cursor:pointer;transition:.15s}
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--soft)}
+  .drop strong{display:block;font-size:16px;margin-bottom:4px}
+  .drop span{color:var(--muted);font-size:13px}
+  .opts{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:16px 0}
+  .opts label{color:var(--muted);font-size:14px}
+  select,.btn{font:inherit;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px}
+  .btn{cursor:pointer;text-decoration:none;display:inline-block}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .btn:disabled{opacity:.5;cursor:default}
+  .spacer{flex:1}
+  .list{display:flex;flex-direction:column;gap:10px}
+  .item{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .name{font-weight:600;word-break:break-all;flex:1;min-width:160px}
+  .meta{color:var(--muted);font-size:13px}
+  .status{font-size:13px}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)}
+  .bar{height:6px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+  .thumb{width:56px;height:56px;object-fit:cover;border-radius:8px;background:var(--line);flex:none}
+  .thumb:not([src]){visibility:hidden}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px}
+  .card img{width:100%;aspect-ratio:3/4;object-fit:contain;background:var(--line);border-radius:6px}
+  .card .row{justify-content:space-between}
+  .card .btn{padding:4px 10px;font-size:13px}
+  .num{font:inherit;border:1px solid var(--line);border-radius:8px;padding:7px 8px;background:var(--panel);color:var(--ink);width:80px}
+  input[type=range]{accent-color:var(--accent);width:120px}
+  audio{width:100%;margin-top:8px;height:36px}
+  .note{color:var(--muted);font-size:13px;margin-top:22px}
+  .empty{color:var(--muted);text-align:center;padding:40px 0}
+  @media (max-width:700px){
+    .app{grid-template-columns:1fr}
+    nav{border-right:0;border-bottom:1px solid var(--line);padding:14px 16px}
+    nav .group{display:none}
+    nav .tools{display:flex;gap:6px;overflow-x:auto}
+    nav button{width:auto;white-space:nowrap}
+    main{padding:20px 16px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav>
+    <h1>🔁 Converter Hub</h1>
+    <div class="tools" id="toolNav"></div>
+  </nav>
+  <main id="view"></main>
+</div>
+
+<script>
+/* ============================================================
+   Registry converter — tambah converter baru di array TOOLS.
+   Tiap tool: { id, name, group, render(el) }
+   ============================================================ */
+const TOOLS = [
+  { id: 'mp4-mp3', name: 'MP4 → MP3', group: 'Audio & Video', render: renderMp4ToMp3 },
+  { id: 'video-gif', name: 'Video → GIF', group: 'Audio & Video', render: renderVideoToGif },
+  { id: 'kompres-video', name: 'Kompres Video', group: 'Audio & Video', render: renderVideoCompress },
+  { id: 'gambar', name: 'JPG / PNG / WEBP', group: 'Gambar', render: renderImageConvert },
+  { id: 'gambar-pdf', name: 'Gambar → PDF', group: 'Dokumen', render: renderImageToPdf },
+  { id: 'pdf-gambar', name: 'PDF → Gambar', group: 'Dokumen', render: renderPdfToImage },
+  { id: 'gabung-pdf', name: 'Gabung PDF', group: 'Dokumen', render: renderMergePdf },
+  { id: 'pisah-pdf', name: 'Pisah PDF', group: 'Dokumen', render: renderSplitPdf },
+  { id: 'kompres-pdf', name: 'Kompres PDF', group: 'Dokumen', render: renderCompressPdf },
+];
+
+const nav = document.getElementById('toolNav');
+const view = document.getElementById('view');
+
+function openTool(id){
+  const t = TOOLS.find(x => x.id === id) || TOOLS[0];
+  nav.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.id === t.id));
+  view.innerHTML = '';
+  t.render(view);
+  try { location.hash = t.id; } catch(e){}
+}
+let lastGroup = null;
+TOOLS.forEach(t => {
+  if (t.group !== lastGroup){
+    const g = document.createElement('div');
+    g.className = 'group'; g.textContent = t.group;
+    nav.appendChild(g); lastGroup = t.group;
+  }
+  const b = document.createElement('button');
+  b.textContent = t.name; b.dataset.id = t.id;
+  b.onclick = () => openTool(t.id);
+  nav.appendChild(b);
+});
+
+/* ---------- util ---------- */
+const fmtSize = n => n < 1048576 ? (n/1024).toFixed(0)+' KB' : (n/1048576).toFixed(1)+' MB';
+const fmtTime = s => { s = Math.round(s); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+const tick = () => new Promise(r => setTimeout(r, 0));
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function floatToInt16(f){
+  const out = new Int16Array(f.length);
+  for (let i = 0; i < f.length; i++){
+    const s = Math.max(-1, Math.min(1, f[i]));
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return out;
+}
+
+/* ============================================================
+   MP4 → MP3  (semua proses di browser, file tidak di-upload)
+   ============================================================ */
+async function videoToMp3(file, kbps, onProgress){
+  const data = await file.arrayBuffer();
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new Ctx({ sampleRate: 44100 });
+  let audio;
+  try { audio = await ctx.decodeAudioData(data); }
+  catch(e){ throw new Error('Tidak bisa membaca audio (video tanpa suara atau codec tidak didukung).'); }
+  finally { ctx.close(); }
+
+  const channels = Math.min(2, audio.numberOfChannels);
+  const enc = new lamejs.Mp3Encoder(channels, audio.sampleRate, kbps);
+  const L = floatToInt16(audio.getChannelData(0));
+  const R = channels === 2 ? floatToInt16(audio.getChannelData(1)) : null;
+  const BLOCK = 1152, parts = [];
+
+  for (let i = 0; i < L.length; i += BLOCK){
+    const buf = R ? enc.encodeBuffer(L.subarray(i, i+BLOCK), R.subarray(i, i+BLOCK))
+                  : enc.encodeBuffer(L.subarray(i, i+BLOCK));
+    if (buf.length) parts.push(new Uint8Array(buf));
+    if ((i / BLOCK) % 300 === 0){ onProgress(i / L.length); await tick(); }
+  }
+  const end = enc.flush();
+  if (end.length) parts.push(new Uint8Array(end));
+  onProgress(1);
+  return { blob: new Blob(parts, { type: 'audio/mpeg' }), duration: audio.duration };
+}
+
+function renderMp4ToMp3(el){
+  el.innerHTML = `
+    <h2>MP4 → MP3</h2>
+    <p class="sub">Ambil audio dari video jadi file MP3. Diproses langsung di browser — file tidak di-upload ke mana pun.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="video/*,.mp4,.m4a,.mov,.webm" multiple hidden>
+      <strong>Klik atau tarik file video ke sini</strong>
+      <span>MP4 (juga bisa M4A, MOV, WEBM) · bisa banyak file sekaligus</span>
+    </label>
+    <div class="opts">
+      <label for="kbps">Kualitas</label>
+      <select id="kbps">
+        <option value="128">128 kbps (kecil)</option>
+        <option value="192" selected>192 kbps (standar)</option>
+        <option value="256">256 kbps</option>
+        <option value="320">320 kbps (terbaik)</option>
+      </select>
+      <span class="spacer"></span>
+      <button class="btn" id="clear" disabled>Bersihkan</button>
+      <button class="btn primary" id="all" disabled>Unduh semua</button>
+    </div>
+    <div class="list" id="list"><div class="empty">Belum ada file.</div></div>
+    <p class="note">Tips: file sangat besar (video panjang &gt; 1 jam) butuh RAM lebih banyak. Kalau gagal, coba di Chrome/Edge desktop.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), list = $('#list');
+  const results = []; // {name, url}
+  let queue = Promise.resolve();
+
+  const refreshButtons = () => {
+    $('#all').disabled = results.length === 0;
+    $('#clear').disabled = list.querySelector('.item') === null;
+  };
+
+  function addFiles(files){
+    const kbps = +$('#kbps').value;
+    if (list.querySelector('.empty')) list.innerHTML = '';
+    for (const f of files){
+      const outName = f.name.replace(/\.[^.]+$/, '') + '.mp3';
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerHTML = `
+        <div class="row">
+          <div class="name">${esc(f.name)}</div>
+          <span class="meta">${fmtSize(f.size)}</span>
+          <span class="status">Menunggu…</span>
+        </div>
+        <div class="bar"><i></i></div>`;
+      list.appendChild(item);
+      const status = item.querySelector('.status'), bar = item.querySelector('.bar i');
+
+      queue = queue.then(async () => {
+        status.textContent = 'Memproses…';
+        try {
+          const { blob, duration } = await videoToMp3(f, kbps, p => {
+            bar.style.width = (p*100).toFixed(1) + '%';
+            status.textContent = 'Memproses… ' + Math.round(p*100) + '%';
+          });
+          const url = URL.createObjectURL(blob);
+          results.push({ name: outName, url });
+          item.querySelector('.bar').remove();
+          status.className = 'status ok';
+          status.textContent = '✓ Selesai';
+          item.querySelector('.meta').textContent = fmtTime(duration) + ' · ' + fmtSize(blob.size);
+          const a = document.createElement('a');
+          a.className = 'btn primary'; a.href = url; a.download = outName; a.textContent = 'Unduh MP3';
+          item.querySelector('.row').appendChild(a);
+          const player = document.createElement('audio');
+          player.controls = true; player.src = url; player.preload = 'none';
+          item.appendChild(player);
+        } catch(e){
+          status.className = 'status err';
+          status.textContent = '✗ ' + e.message;
+          bar.parentElement.remove();
+        }
+        refreshButtons();
+      });
+    }
+    refreshButtons();
+  }
+
+  pick.onchange = () => { addFiles(pick.files); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+
+  $('#all').onclick = async () => {
+    for (const r of results){
+      const a = document.createElement('a'); a.href = r.url; a.download = r.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      await new Promise(res => setTimeout(res, 400));
+    }
+  };
+  $('#clear').onclick = () => {
+    results.forEach(r => URL.revokeObjectURL(r.url));
+    results.length = 0;
+    list.innerHTML = '<div class="empty">Belum ada file.</div>';
+    refreshButtons();
+  };
+}
+
+/* ============================================================
+   Video → GIF  (ambil frame lewat <video> + canvas, encode pakai gifenc)
+   ============================================================ */
+function renderVideoToGif(el){
+  el.innerHTML = `
+    <h2>Video → GIF</h2>
+    <p class="sub">Potong bagian video lalu jadikan GIF animasi. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="video/*" hidden>
+      <strong>Klik atau tarik satu video ke sini</strong>
+      <span>MP4, WEBM, MOV · paling pas untuk potongan pendek (≤ 15 detik)</span>
+    </label>
+    <div id="editor" hidden>
+      <video id="vid" controls muted playsinline style="width:100%;max-height:360px;background:#000;border-radius:12px;margin-top:16px"></video>
+      <div class="meta" id="vinfo"></div>
+      <div class="opts">
+        <label for="start">Mulai</label>
+        <input type="number" id="start" min="0" step="0.1" value="0" class="num">
+        <button class="btn" id="setStart" title="Ambil dari posisi video sekarang">⏱ dari video</button>
+        <label for="end">Selesai</label>
+        <input type="number" id="end" min="0" step="0.1" value="5" class="num">
+        <button class="btn" id="setEnd" title="Ambil dari posisi video sekarang">⏱ dari video</button>
+        <span class="meta" id="durInfo"></span>
+      </div>
+      <div class="opts">
+        <label for="fps">FPS</label>
+        <select id="fps">
+          <option value="8">8</option>
+          <option value="10">10</option>
+          <option value="12" selected>12</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+        </select>
+        <label for="width">Lebar</label>
+        <select id="width">
+          <option value="240">240 px</option>
+          <option value="320">320 px</option>
+          <option value="480" selected>480 px</option>
+          <option value="640">640 px</option>
+          <option value="800">800 px</option>
+        </select>
+        <label for="loop">Ulang</label>
+        <select id="loop">
+          <option value="0" selected>Terus-menerus</option>
+          <option value="-1">Sekali saja</option>
+        </select>
+        <span class="spacer"></span>
+        <button class="btn primary" id="make">Buat GIF</button>
+        <button class="btn" id="cancel" hidden>Batal</button>
+      </div>
+      <div class="bar" id="bar" hidden><i></i></div>
+      <div id="out"></div>
+    </div>
+    <p class="note">Ukuran GIF cepat membesar: makin panjang durasi, makin tinggi FPS, dan makin lebar gambar, makin besar file-nya. Untuk dibagikan di chat, 3–8 detik di 480 px / 12 FPS biasanya pas.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), vid = $('#vid'), out = $('#out');
+  let srcUrl = null, gifUrl = null, cancelled = false, srcName = 'video';
+  const MAX_FRAMES = 600;
+
+  const estimate = () => {
+    const d = Math.max(0, +$('#end').value - +$('#start').value);
+    const frames = Math.ceil(d * +$('#fps').value);
+    $('#durInfo').textContent = `${d.toFixed(1)} dtk · ${frames} frame` + (frames > MAX_FRAMES ? ' (terlalu banyak!)' : '');
+  };
+
+  function loadVideo(file){
+    if (!file || !file.type.startsWith('video/')) return;
+    if (srcUrl) URL.revokeObjectURL(srcUrl);
+    srcUrl = URL.createObjectURL(file);
+    srcName = file.name.replace(/\.[^.]+$/, '');
+    vid.src = srcUrl;
+    out.innerHTML = '';
+    $('#editor').hidden = false;
+    vid.onloadedmetadata = () => {
+      $('#vinfo').textContent = `${file.name} · ${vid.videoWidth}×${vid.videoHeight} · ${fmtTime(vid.duration)}`;
+      $('#start').value = 0;
+      $('#end').value = Math.min(5, vid.duration).toFixed(1);
+      $('#start').max = $('#end').max = vid.duration.toFixed(1);
+      estimate();
+    };
+    vid.onerror = () => { $('#vinfo').innerHTML = '<span class="status err">✗ Video tidak bisa diputar di browser ini.</span>'; };
+  }
+
+  const seek = t => new Promise((res, rej) => {
+    const ok = () => { vid.removeEventListener('seeked', ok); res(); };
+    vid.addEventListener('seeked', ok);
+    vid.currentTime = t;
+    setTimeout(() => { vid.removeEventListener('seeked', ok); res(); }, 3000); // jaga-jaga
+  });
+
+  async function makeGif(){
+    const start = Math.max(0, +$('#start').value);
+    const end = Math.min(vid.duration, +$('#end').value);
+    const fps = +$('#fps').value;
+    if (!(end > start)){ out.innerHTML = '<p class="status err">✗ Waktu selesai harus lebih besar dari waktu mulai.</p>'; return; }
+    const frames = Math.ceil((end - start) * fps);
+    if (frames > MAX_FRAMES){ out.innerHTML = `<p class="status err">✗ ${frames} frame terlalu banyak (maks ${MAX_FRAMES}). Perpendek durasi atau turunkan FPS.</p>`; return; }
+
+    const w = Math.min(+$('#width').value, vid.videoWidth) & ~1;
+    const h = Math.round(vid.videoHeight * w / vid.videoWidth);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const g = cv.getContext('2d', { willReadFrequently: true });
+    const { GIFEncoder, quantize, applyPalette } = gifenc;
+    const gif = GIFEncoder();
+    const delay = Math.round(1000 / fps);
+    const repeat = +$('#loop').value;
+
+    cancelled = false; vid.pause();
+    $('#make').hidden = true; $('#cancel').hidden = false;
+    const bar = $('#bar'); bar.hidden = false; bar.firstElementChild.style.width = '0';
+    out.innerHTML = '<p class="meta">Mengambil frame…</p>';
+
+    for (let i = 0; i < frames && !cancelled; i++){
+      await seek(start + i / fps);
+      g.drawImage(vid, 0, 0, w, h);
+      const { data } = g.getImageData(0, 0, w, h);
+      const palette = quantize(data, 256);
+      const index = applyPalette(data, palette);
+      gif.writeFrame(index, w, h, { palette, delay, repeat });
+      bar.firstElementChild.style.width = ((i+1) / frames * 100).toFixed(1) + '%';
+      out.innerHTML = `<p class="meta">Frame ${i+1} / ${frames}</p>`;
+      if (i % 4 === 0) await tick();
+    }
+    $('#make').hidden = false; $('#cancel').hidden = true; bar.hidden = true;
+    if (cancelled){ out.innerHTML = '<p class="meta">Dibatalkan.</p>'; return; }
+
+    gif.finish();
+    const blob = new Blob([gif.bytes()], { type: 'image/gif' });
+    if (gifUrl) URL.revokeObjectURL(gifUrl);
+    gifUrl = URL.createObjectURL(blob);
+    const name = srcName + '.gif';
+    out.innerHTML = `
+      <div class="item" style="margin-top:14px">
+        <div class="row">
+          <div class="name">${esc(name)}</div>
+          <span class="meta">${w}×${h} · ${frames} frame · ${fmtSize(blob.size)}</span>
+          <a class="btn primary" href="${gifUrl}" download="${esc(name)}">Unduh GIF</a>
+        </div>
+        <img src="${gifUrl}" alt="Hasil GIF" style="max-width:100%;margin-top:10px;border-radius:8px">
+      </div>`;
+  }
+
+  pick.onchange = () => { loadVideo(pick.files[0]); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => loadVideo(e.dataTransfer.files[0]));
+  $('#setStart').onclick = () => { $('#start').value = vid.currentTime.toFixed(1); estimate(); };
+  $('#setEnd').onclick = () => { $('#end').value = vid.currentTime.toFixed(1); estimate(); };
+  ['#start', '#end', '#fps'].forEach(s => $(s).addEventListener('input', estimate));
+  $('#make').onclick = makeGif;
+  $('#cancel').onclick = () => { cancelled = true; };
+}
+
+/* ============================================================
+   Kompres Video  (Mediabunny + WebCodecs → MP4 H.264/AAC, dimuat saat dibutuhkan)
+   ============================================================ */
+function renderVideoCompress(el){
+  el.innerHTML = `
+    <h2>Kompres Video</h2>
+    <p class="sub">Perkecil ukuran file video — atur target ukuran (mis. untuk WhatsApp/email) atau kualitas. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="video/*" hidden>
+      <strong>Klik atau tarik satu video ke sini</strong>
+      <span>MP4, MOV, WEBM, MKV · hasil selalu MP4 (H.264 + AAC)</span>
+    </label>
+    <div id="panel" hidden>
+      <p class="meta" id="info" style="margin:14px 0 0"></p>
+      <div class="opts">
+        <label for="mode">Cara</label>
+        <select id="mode">
+          <option value="size" selected>Target ukuran file</option>
+          <option value="quality">Pilih kualitas</option>
+        </select>
+        <span id="sizeBox"><input type="number" id="target" class="num" min="1" step="1" value="16"> <span class="meta">MB</span></span>
+        <select id="quality" hidden>
+          <option value="QUALITY_HIGH">Tinggi</option>
+          <option value="QUALITY_MEDIUM" selected>Sedang</option>
+          <option value="QUALITY_LOW">Rendah</option>
+          <option value="QUALITY_VERY_LOW">Sangat rendah</option>
+        </select>
+      </div>
+      <div class="opts">
+        <label for="res">Resolusi</label>
+        <select id="res">
+          <option value="0">Asli</option>
+          <option value="1080">1080p</option>
+          <option value="720" selected>720p</option>
+          <option value="480">480p</option>
+          <option value="360">360p</option>
+        </select>
+        <label for="fps">FPS</label>
+        <select id="fps">
+          <option value="0" selected>Asli</option>
+          <option value="30">30</option>
+          <option value="24">24</option>
+        </select>
+        <label for="aud">Suara</label>
+        <select id="aud">
+          <option value="128000" selected>Normal (128 kbps)</option>
+          <option value="64000">Hemat (64 kbps)</option>
+          <option value="0">Hapus suara</option>
+        </select>
+        <span class="spacer"></span>
+        <button class="btn primary" id="go">Kompres</button>
+        <button class="btn" id="cancel" hidden>Batal</button>
+      </div>
+      <p class="meta" id="est"></p>
+      <div class="bar" id="bar" hidden><i></i></div>
+      <div id="out"></div>
+    </div>
+    <p class="note">Target ukuran adalah perkiraan — hasil bisa sedikit meleset. Batas umum: WhatsApp ±16 MB untuk kirim cepat (dokumen sampai 2 GB), email ±20–25 MB. Butuh Chrome/Edge terbaru (pakai akselerasi hardware, jauh lebih cepat dari durasi video).</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), out = $('#out');
+  let file = null, meta = null, conv = null, resultUrl = null;
+
+  const opts = () => ({
+    mode: $('#mode').value, targetMB: +$('#target').value, quality: $('#quality').value,
+    res: +$('#res').value, fps: +$('#fps').value, audBps: +$('#aud').value,
+  });
+
+  // ukuran keluaran (genap), sisi pendek dibatasi ke resolusi pilihan
+  function outDims(res){
+    let { w, h } = meta;
+    const short = Math.min(w, h);
+    if (res && short > res){ const k = res / short; w *= k; h *= k; }
+    return { w: Math.round(w / 2) * 2, h: Math.round(h / 2) * 2 };
+  }
+  function videoBitrate(o){
+    const total = o.targetMB * 8e6 * 0.95 / meta.duration; // sisakan 5% untuk kontainer
+    return Math.round(total - (meta.hasAudio ? o.audBps : 0));
+  }
+  function updateEstimate(){
+    if (!meta) return;
+    const o = opts();
+    $('#sizeBox').hidden = o.mode !== 'size'; $('#quality').hidden = o.mode !== 'quality';
+    const d = outDims(o.res);
+    let txt = `Hasil: ${d.w}×${d.h}`;
+    if (o.mode === 'size'){
+      const vb = videoBitrate(o);
+      if (vb < 150000) txt += ' · ⚠ target terlalu kecil untuk durasi ini — naikkan MB atau turunkan resolusi';
+      else txt += ` · bitrate video ±${(vb/1e6).toFixed(2)} Mbps`;
+      if (o.targetMB * 1048576 >= file.size) txt += ' · target ≥ ukuran asli, tidak perlu dikompres';
+    }
+    $('#est').textContent = txt;
+  }
+
+  async function openVideo(f){
+    if (!f) return;
+    file = f; meta = null; out.innerHTML = '';
+    $('#panel').hidden = false; $('#go').disabled = true; $('#est').textContent = '';
+    if (!window.VideoEncoder){ $('#info').innerHTML = '<span class="status err">✗ Browser ini belum mendukung kompres video. Pakai Chrome atau Edge terbaru.</span>'; return; }
+    $('#info').textContent = 'Membaca video…';
+    try {
+      await loadScript('lib/mediabunny.min.js');
+      const MB = Mediabunny;
+      const input = new MB.Input({ source: new MB.BlobSource(f), formats: MB.ALL_FORMATS });
+      const vt = await input.getPrimaryVideoTrack();
+      if (!vt) throw new Error('Tidak ada trek video.');
+      const at = await input.getPrimaryAudioTrack();
+      const duration = await input.computeDuration();
+      meta = { w: vt.displayWidth, h: vt.displayHeight, duration, hasAudio: !!at };
+      const mbps = (f.size * 8 / duration / 1e6).toFixed(1);
+      $('#info').textContent = `${f.name} · ${meta.w}×${meta.h} · ${fmtTime(duration)} · ${fmtSize(f.size)} (±${mbps} Mbps)` + (at ? '' : ' · tanpa suara');
+      $('#target').value = Math.max(1, Math.min(16, Math.floor(f.size / 1048576 / 2) || 1));
+      $('#go').disabled = false;
+      updateEstimate();
+    } catch(e){
+      $('#info').innerHTML = `<span class="status err">✗ Video tidak bisa dibaca: ${esc(e.message || String(e))}</span>`;
+    }
+  }
+
+  async function compress(){
+    const o = opts(), MB = Mediabunny;
+    if (o.mode === 'size' && videoBitrate(o) < 150000){ updateEstimate(); return; }
+    const d = outDims(o.res);
+    const audio = o.audBps ? { codec: 'aac', bitrate: o.audBps, forceTranscode: true } : { discard: true };
+    const bar = $('#bar');
+
+    async function encodeOnce(bitrate, label){
+      const input = new MB.Input({ source: new MB.BlobSource(file), formats: MB.ALL_FORMATS });
+      const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: 'in-memory' }), target: new MB.BufferTarget() });
+      const video = { codec: 'avc', forceTranscode: true, width: d.w, height: d.h, fit: 'fill', bitrate };
+      if (o.mode === 'size') video.bitrateMode = 'constant'; // lebih patuh ke target ukuran
+      if (o.fps) video.frameRate = o.fps;
+      try {
+        conv = await MB.Conversion.init({ input, output, video, audio });
+        if (!conv.isValid){
+          const why = conv.discardedTracks.map(t => t.reason).join(', ');
+          throw new Error('Format ini tidak bisa diproses di browser ini (' + why + ').');
+        }
+        conv.onProgress = p => {
+          bar.firstElementChild.style.width = (p * 100).toFixed(1) + '%';
+          out.innerHTML = `<p class="meta">${label} ${Math.round(p * 100)}%</p>`;
+        };
+        await conv.execute();
+        return new Blob([output.target.buffer], { type: 'video/mp4' });
+      } finally { conv = null; if (input.dispose) input.dispose(); }
+    }
+
+    $('#go').hidden = true; $('#cancel').hidden = false;
+    bar.hidden = false; bar.firstElementChild.style.width = '0';
+    out.innerHTML = '<p class="meta">Menyiapkan…</p>';
+    const t0 = performance.now();
+    try {
+      let blob;
+      if (o.mode === 'size'){
+        const targetBytes = o.targetMB * 1048576;
+        let vb = videoBitrate(o);
+        blob = await encodeOnce(vb, 'Mengompres…');
+        if (blob.size > targetBytes * 1.03){
+          // encoder melebihi target → koreksi bitrate video lalu ulangi sekali
+          const audioBytes = meta.hasAudio && o.audBps ? o.audBps * meta.duration / 8 : 0;
+          const vidBytes = Math.max(1, blob.size - audioBytes);
+          vb = Math.round(vb * (targetBytes * 0.95 - audioBytes) / vidBytes);
+          if (vb >= 100000) blob = await encodeOnce(vb, 'Hasil masih di atas target, mengulang…');
+        }
+      } else {
+        blob = await encodeOnce(MB[o.quality], 'Mengompres…');
+      }
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      resultUrl = URL.createObjectURL(blob);
+      const name = file.name.replace(/\.[^.]+$/, '') + '-kompres.mp4';
+      const diff = Math.round((blob.size / file.size - 1) * 100);
+      const secs = ((performance.now() - t0) / 1000).toFixed(1);
+      out.innerHTML = `
+        <div class="item" style="margin-top:14px">
+          <div class="row">
+            <div class="name">${esc(name)}</div>
+            <span class="meta">${d.w}×${d.h} · ${fmtSize(file.size)} → ${fmtSize(blob.size)} (${diff > 0 ? '+' : ''}${diff}%) · ${secs} dtk</span>
+            <a class="btn primary" href="${resultUrl}" download="${esc(name)}">Unduh MP4</a>
+          </div>
+          ${diff >= 0 ? '<p class="status err" style="margin:6px 0 0">Hasil tidak lebih kecil — video asli sudah efisien. Coba resolusi atau kualitas lebih rendah.</p>'
+            : o.mode === 'size' && blob.size > o.targetMB * 1048576 * 1.03 ? `<p class="status err" style="margin:6px 0 0">Masih di atas target ${o.targetMB} MB — turunkan resolusi lalu coba lagi.</p>` : ''}
+          <video src="${resultUrl}" controls playsinline style="width:100%;max-height:360px;background:#000;border-radius:8px;margin-top:10px"></video>
+        </div>`;
+    } catch(e){
+      out.innerHTML = e instanceof MB.ConversionCanceledError || /cancel/i.test(e && e.name || '')
+        ? '<p class="meta">Dibatalkan.</p>'
+        : `<p class="status err">✗ ${esc(e.message || String(e))}</p>`;
+    } finally {
+      $('#go').hidden = false; $('#cancel').hidden = true; bar.hidden = true;
+    }
+  }
+
+  pick.onchange = () => { openVideo(pick.files[0]); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => openVideo(e.dataTransfer.files[0]));
+  ['#mode', '#target', '#quality', '#res', '#fps', '#aud'].forEach(s => $(s).addEventListener('input', updateEstimate));
+  $('#go').onclick = compress;
+  $('#cancel').onclick = () => { if (conv) conv.cancel(); };
+}
+
+/* ============================================================
+   Gambar: JPG / PNG / WEBP  (pakai canvas, semua di browser)
+   ============================================================ */
+const IMG_FORMATS = {
+  jpg:  { mime: 'image/jpeg', ext: 'jpg',  lossy: true },
+  png:  { mime: 'image/png',  ext: 'png',  lossy: false },
+  webp: { mime: 'image/webp', ext: 'webp', lossy: true },
+};
+
+async function loadImage(file){
+  try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch(e){
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image(); img.src = url; await img.decode(); return img;
+    } catch(e2){ throw new Error('Format gambar tidak didukung browser (mis. HEIC).'); }
+    finally { URL.revokeObjectURL(url); }
+  }
+}
+
+async function convertImage(file, { fmt, quality, maxSide }){
+  const src = await loadImage(file);
+  let w = src.width, h = src.height;
+  if (maxSide && Math.max(w, h) > maxSide){
+    const k = maxSide / Math.max(w, h); w = Math.round(w*k); h = Math.round(h*k);
+  }
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const g = cv.getContext('2d');
+  const F = IMG_FORMATS[fmt];
+  if (F.mime === 'image/jpeg'){ g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); } // JPG tak punya transparansi
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(src, 0, 0, w, h);
+  if (src.close) src.close();
+  const blob = await new Promise(r => cv.toBlob(r, F.mime, F.lossy ? quality/100 : undefined));
+  if (!blob || blob.type !== F.mime) throw new Error('Browser ini tidak bisa membuat ' + fmt.toUpperCase() + '.');
+  return { blob, w, h };
+}
+
+function renderImageConvert(el){
+  el.innerHTML = `
+    <h2>Konversi Gambar</h2>
+    <p class="sub">Ubah gambar antar format JPG, PNG, dan WEBP, sekalian kecilkan ukurannya. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="image/*" multiple hidden>
+      <strong>Klik atau tarik gambar ke sini</strong>
+      <span>JPG, PNG, WEBP (juga GIF, BMP, AVIF) · bisa banyak file sekaligus</span>
+    </label>
+    <div class="opts">
+      <label for="fmt">Jadi</label>
+      <select id="fmt">
+        <option value="jpg">JPG</option>
+        <option value="png">PNG</option>
+        <option value="webp" selected>WEBP</option>
+      </select>
+      <label for="q">Kualitas</label>
+      <input type="range" id="q" min="10" max="100" value="85">
+      <span class="meta" id="qv">85%</span>
+      <label for="max">Ukuran</label>
+      <select id="max">
+        <option value="0">Asli</option>
+        <option value="3840">Maks 3840 px</option>
+        <option value="1920">Maks 1920 px</option>
+        <option value="1280">Maks 1280 px</option>
+        <option value="800">Maks 800 px</option>
+        <option value="512">Maks 512 px</option>
+      </select>
+    </div>
+    <div class="opts">
+      <span class="meta" id="hint"></span>
+      <span class="spacer"></span>
+      <button class="btn" id="clear" disabled>Bersihkan</button>
+      <button class="btn primary" id="all" disabled>Unduh semua</button>
+    </div>
+    <div class="list" id="list"><div class="empty">Belum ada gambar.</div></div>
+    <p class="note">Ubah format/kualitas/ukuran kapan saja — semua gambar di daftar otomatis dikonversi ulang. PNG selalu lossless (slider kualitas tidak berlaku). Gambar transparan yang dijadikan JPG akan diberi latar putih.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), list = $('#list');
+  const entries = []; // {file, item, url, name}
+  let runId = 0;
+
+  const opts = () => ({ fmt: $('#fmt').value, quality: +$('#q').value, maxSide: +$('#max').value });
+  const refresh = () => {
+    $('#all').disabled = !entries.some(e => e.url);
+    $('#clear').disabled = entries.length === 0;
+    const lossy = IMG_FORMATS[$('#fmt').value].lossy;
+    $('#q').disabled = !lossy; $('#qv').style.opacity = lossy ? 1 : .4;
+    $('#hint').textContent = entries.length ? entries.length + ' gambar' : '';
+  };
+
+  async function process(entry, myRun){
+    const o = opts();
+    const status = entry.item.querySelector('.status');
+    status.className = 'status'; status.textContent = 'Memproses…';
+    try {
+      const { blob, w, h } = await convertImage(entry.file, o);
+      if (myRun !== runId) return; // pengaturan sudah berubah lagi
+      if (entry.url) URL.revokeObjectURL(entry.url);
+      entry.url = URL.createObjectURL(blob);
+      entry.name = entry.file.name.replace(/\.[^.]+$/, '') + '.' + IMG_FORMATS[o.fmt].ext;
+      const diff = Math.round((blob.size / entry.file.size - 1) * 100);
+      entry.item.querySelector('.thumb').src = entry.url;
+      entry.item.querySelector('.meta').textContent =
+        `${w}×${h} · ${fmtSize(entry.file.size)} → ${fmtSize(blob.size)} (${diff > 0 ? '+' : ''}${diff}%)`;
+      status.className = 'status ok'; status.textContent = '✓ ' + o.fmt.toUpperCase();
+      const a = entry.item.querySelector('a');
+      a.href = entry.url; a.download = entry.name; a.hidden = false;
+    } catch(e){
+      status.className = 'status err'; status.textContent = '✗ ' + e.message;
+      entry.item.querySelector('a').hidden = true; entry.url = null;
+    }
+    refresh();
+  }
+
+  async function processAll(){
+    const myRun = ++runId;
+    for (const e of entries){ if (myRun !== runId) return; await process(e, myRun); }
+  }
+
+  function addFiles(files){
+    if (!entries.length) list.innerHTML = '';
+    const fresh = [];
+    for (const f of files){
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerHTML = `
+        <div class="row">
+          <img class="thumb" alt="">
+          <div style="flex:1;min-width:160px">
+            <div class="name">${esc(f.name)}</div>
+            <div class="meta">${fmtSize(f.size)}</div>
+          </div>
+          <span class="status">Menunggu…</span>
+          <a class="btn primary" hidden>Unduh</a>
+        </div>`;
+      list.appendChild(item);
+      const entry = { file: f, item, url: null, name: '' };
+      entries.push(entry); fresh.push(entry);
+    }
+    refresh();
+    const myRun = runId;
+    (async () => { for (const e of fresh) await process(e, myRun); })();
+  }
+
+  pick.onchange = () => { addFiles(pick.files); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+
+  $('#q').oninput = () => { $('#qv').textContent = $('#q').value + '%'; };
+  $('#q').onchange = processAll;
+  $('#fmt').onchange = () => { refresh(); processAll(); };
+  $('#max').onchange = processAll;
+
+  $('#all').onclick = async () => {
+    for (const e of entries.filter(e => e.url)){
+      const a = document.createElement('a'); a.href = e.url; a.download = e.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      await new Promise(res => setTimeout(res, 400));
+    }
+  };
+  $('#clear').onclick = () => {
+    runId++;
+    entries.forEach(e => e.url && URL.revokeObjectURL(e.url));
+    entries.length = 0;
+    list.innerHTML = '<div class="empty">Belum ada gambar.</div>';
+    refresh();
+  };
+  refresh();
+}
+
+/* ============================================================
+   Gambar → PDF  (PDF ditulis manual, gambar di-embed sebagai JPEG)
+   ============================================================ */
+const PAGE_SIZES = { a4: [595.28, 841.89], letter: [612, 792], f4: [609.45, 935.43] }; // pt
+
+function buildPdf(pages){
+  // pages: [{ w, h, x, y, dw, dh, jpg:Uint8Array, pw, ph }]  (satuan pt, y dari bawah)
+  const te = new TextEncoder(), parts = [], offs = [];
+  let len = 0;
+  const push = x => { const b = typeof x === 'string' ? te.encode(x) : x; parts.push(b); len += b.length; };
+  const obj = (n, body) => { offs[n] = len; push(n + ' 0 obj\n'); body(); push('\nendobj\n'); };
+  const f = v => (+v).toFixed(2);
+
+  push('%PDF-1.4\n%âãÏÓ\n');
+  const kids = pages.map((_, i) => (3 + i*3) + ' 0 R').join(' ');
+  obj(1, () => push('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => push(`<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`));
+  pages.forEach((p, i) => {
+    const pn = 3 + i*3, cn = pn + 1, im = pn + 2;
+    obj(pn, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f(p.w)} ${f(p.h)}] ` +
+      `/Resources << /XObject << /Im0 ${im} 0 R >> >> /Contents ${cn} 0 R >>`));
+    const s = `q ${f(p.dw)} 0 0 ${f(p.dh)} ${f(p.x)} ${f(p.y)} cm /Im0 Do Q`;
+    obj(cn, () => push(`<< /Length ${s.length} >>\nstream\n${s}\nendstream`));
+    obj(im, () => {
+      push(`<< /Type /XObject /Subtype /Image /Width ${p.pw} /Height ${p.ph} /ColorSpace /DeviceRGB ` +
+        `/BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpg.length} >>\nstream\n`);
+      push(p.jpg); push('\nendstream');
+    });
+  });
+  const size = 3 + pages.length*3, xref = len;
+  let x = `xref\n0 ${size}\n0000000000 65535 f \n`;
+  for (let i = 1; i < size; i++) x += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+  push(x + `trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(parts, { type: 'application/pdf' });
+}
+
+function renderImageToPdf(el){
+  el.innerHTML = `
+    <h2>Gambar → PDF</h2>
+    <p class="sub">Gabungkan banyak gambar jadi satu file PDF, satu gambar per halaman. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="image/*" multiple hidden>
+      <strong>Klik atau tarik gambar ke sini</strong>
+      <span>JPG, PNG, WEBP, GIF, BMP · urutan bisa diatur setelah ditambahkan</span>
+    </label>
+    <div class="opts">
+      <label for="size">Kertas</label>
+      <select id="size">
+        <option value="a4" selected>A4</option>
+        <option value="f4">F4 / Folio</option>
+        <option value="letter">Letter</option>
+        <option value="fit">Sesuai gambar</option>
+      </select>
+      <label for="orient">Arah</label>
+      <select id="orient">
+        <option value="auto" selected>Otomatis</option>
+        <option value="portrait">Tegak</option>
+        <option value="landscape">Mendatar</option>
+      </select>
+      <label for="margin">Margin</label>
+      <select id="margin">
+        <option value="0">Tanpa</option>
+        <option value="20" selected>Kecil</option>
+        <option value="50">Besar</option>
+      </select>
+      <label for="qual">Kualitas</label>
+      <select id="qual">
+        <option value="3000,0.92">Tinggi</option>
+        <option value="2000,0.82" selected>Sedang</option>
+        <option value="1400,0.65">Kecil (hemat)</option>
+      </select>
+    </div>
+    <div class="opts">
+      <label for="fname">Nama file</label>
+      <input id="fname" value="dokumen" style="font:inherit;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel);color:var(--ink);width:180px">
+      <span class="meta">.pdf</span>
+      <span class="spacer"></span>
+      <button class="btn" id="sort">Urutkan A–Z</button>
+      <button class="btn" id="clear" disabled>Bersihkan</button>
+      <button class="btn primary" id="make" disabled>Buat PDF</button>
+    </div>
+    <div id="out"></div>
+    <div class="list" id="list"><div class="empty">Belum ada gambar.</div></div>
+    <p class="note">Mode "Otomatis": gambar mendatar dapat halaman mendatar, gambar tegak dapat halaman tegak. Gambar transparan diberi latar putih.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), list = $('#list'), out = $('#out');
+  let items = []; // {file, thumb}
+  let pdfUrl = null;
+  let nameTouched = false; // nama file ikut gambar pertama sampai user mengetiknya sendiri
+  $('#fname').oninput = () => { nameTouched = true; };
+
+  function draw(){
+    $('#make').disabled = items.length === 0;
+    $('#clear').disabled = items.length === 0;
+    $('#sort').disabled = items.length < 2;
+    if (!nameTouched) $('#fname').value = items.length ? items[0].file.name.replace(/\.[^.]+$/, '') : 'dokumen';
+    if (!items.length){ list.innerHTML = '<div class="empty">Belum ada gambar.</div>'; return; }
+    list.innerHTML = '';
+    items.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'item';
+      d.innerHTML = `
+        <div class="row">
+          <span class="meta" style="width:22px;text-align:right">${i+1}</span>
+          <img class="thumb" src="${it.thumb}" alt="">
+          <div style="flex:1;min-width:140px">
+            <div class="name">${esc(it.file.name)}</div>
+            <div class="meta">${fmtSize(it.file.size)}</div>
+          </div>
+          <button class="btn" data-a="up" ${i === 0 ? 'disabled' : ''} title="Naik">↑</button>
+          <button class="btn" data-a="down" ${i === items.length-1 ? 'disabled' : ''} title="Turun">↓</button>
+          <button class="btn" data-a="del" title="Hapus">✕</button>
+        </div>`;
+      d.querySelectorAll('button').forEach(b => b.onclick = () => {
+        const a = b.dataset.a;
+        if (a === 'up') [items[i-1], items[i]] = [items[i], items[i-1]];
+        if (a === 'down') [items[i+1], items[i]] = [items[i], items[i+1]];
+        if (a === 'del'){ URL.revokeObjectURL(it.thumb); items.splice(i, 1); }
+        draw();
+      });
+      list.appendChild(d);
+    });
+  }
+
+  function addFiles(files){
+    for (const f of files){
+      if (!f.type.startsWith('image/')) continue;
+      items.push({ file: f, thumb: URL.createObjectURL(f) });
+    }
+    draw();
+  }
+
+  async function makePdf(){
+    const btn = $('#make'); btn.disabled = true;
+    const [maxSide, q] = $('#qual').value.split(',').map(Number);
+    const sizeKey = $('#size').value, orient = $('#orient').value, margin = +$('#margin').value;
+    const pages = [], failed = [];
+    for (let i = 0; i < items.length; i++){
+      out.innerHTML = `<p class="meta">Memproses gambar ${i+1} dari ${items.length}…</p>`;
+      await tick();
+      try {
+        const src = await loadImage(items[i].file);
+        let pw = src.width, ph = src.height;
+        if (Math.max(pw, ph) > maxSide){ const k = maxSide / Math.max(pw, ph); pw = Math.round(pw*k); ph = Math.round(ph*k); }
+        const cv = document.createElement('canvas'); cv.width = pw; cv.height = ph;
+        const g = cv.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, pw, ph);
+        g.imageSmoothingQuality = 'high'; g.drawImage(src, 0, 0, pw, ph);
+        if (src.close) src.close();
+        const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', q));
+        const jpg = new Uint8Array(await blob.arrayBuffer());
+
+        let w, h;
+        if (sizeKey === 'fit'){
+          // ukuran halaman = ukuran gambar (dianggap 150 dpi), tanpa rotasi
+          const iw = src.width * 72/150, ih = src.height * 72/150;
+          w = iw + margin*2; h = ih + margin*2;
+        } else {
+          [w, h] = PAGE_SIZES[sizeKey];
+          const land = orient === 'landscape' || (orient === 'auto' && pw > ph);
+          if (land) [w, h] = [h, w];
+        }
+        const k = Math.min((w - margin*2) / pw, (h - margin*2) / ph);
+        const dw = pw*k, dh = ph*k;
+        pages.push({ w, h, dw, dh, x: (w-dw)/2, y: (h-dh)/2, jpg, pw, ph });
+      } catch(e){ failed.push(items[i].file.name); }
+    }
+    if (!pages.length){
+      out.innerHTML = `<p class="status err">✗ Tidak ada gambar yang bisa dibaca.</p>`;
+      btn.disabled = false; return;
+    }
+    const pdf = buildPdf(pages);
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    pdfUrl = URL.createObjectURL(pdf);
+    const name = ($('#fname').value.trim() || 'dokumen').replace(/[\\/:*?"<>|]/g, '_') + '.pdf';
+    out.innerHTML = `
+      <div class="item" style="margin-bottom:14px">
+        <div class="row">
+          <div class="name">📄 ${esc(name)}</div>
+          <span class="meta">${pages.length} halaman · ${fmtSize(pdf.size)}</span>
+          <a class="btn" href="${pdfUrl}" target="_blank" rel="noopener">Lihat</a>
+          <a class="btn primary" href="${pdfUrl}" download="${esc(name)}">Unduh PDF</a>
+        </div>
+        ${failed.length ? `<div class="status err" style="margin-top:6px">✗ Dilewati (tidak terbaca): ${esc(failed.join(', '))}</div>` : ''}
+      </div>`;
+    btn.disabled = false;
+  }
+
+  pick.onchange = () => { addFiles(pick.files); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+  $('#sort').onclick = () => {
+    items.sort((a, b) => a.file.name.localeCompare(b.file.name, 'id', { numeric: true }));
+    draw();
+  };
+  $('#clear').onclick = () => {
+    items.forEach(it => URL.revokeObjectURL(it.thumb)); items = [];
+    out.innerHTML = ''; nameTouched = false; draw();
+  };
+  $('#make').onclick = makePdf;
+  draw();
+}
+
+/* ============================================================
+   PDF → Gambar  (render pakai pdf.js, ZIP pakai JSZip — dimuat saat dibutuhkan)
+   ============================================================ */
+const _scripts = {};
+function loadScript(src){
+  return _scripts[src] ||= new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res;
+    s.onerror = () => { delete _scripts[src]; rej(new Error('Gagal memuat ' + src)); };
+    document.head.appendChild(s);
+  });
+}
+async function getPdfjs(){
+  await loadScript('lib/pdf.min.js');
+  // dibuka langsung dari file:// → Web Worker diblokir, jadi worker dijalankan di halaman
+  if (location.protocol === 'file:') await loadScript('lib/pdf.worker.min.js');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+  return pdfjsLib;
+}
+
+function parsePages(text, total){
+  text = text.trim().toLowerCase();
+  if (!text || text === 'semua') return [...Array(total)].map((_, i) => i + 1);
+  const set = new Set();
+  for (const part of text.split(/[,;\s]+/).filter(Boolean)){
+    const m = part.match(/^(\d*)\s*-\s*(\d*)$/);
+    if (m){
+      const a = m[1] ? +m[1] : 1, b = m[2] ? +m[2] : total;
+      for (let i = Math.max(1, a); i <= Math.min(total, b); i++) set.add(i);
+    } else if (/^\d+$/.test(part)){
+      const n = +part; if (n >= 1 && n <= total) set.add(n);
+    } else throw new Error(`"${part}" bukan nomor halaman yang valid.`);
+  }
+  if (!set.size) throw new Error('Tidak ada halaman yang cocok.');
+  return [...set].sort((a, b) => a - b);
+}
+
+function renderPdfToImage(el){
+  el.innerHTML = `
+    <h2>PDF → Gambar</h2>
+    <p class="sub">Ubah tiap halaman PDF jadi gambar PNG, JPG, atau WEBP. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="application/pdf,.pdf" hidden>
+      <strong>Klik atau tarik satu file PDF ke sini</strong>
+      <span>Semua halaman bisa dikonversi, atau pilih halaman tertentu</span>
+    </label>
+    <div id="panel" hidden>
+      <p class="meta" id="info" style="margin:14px 0 0"></p>
+      <div class="opts">
+        <label for="fmt">Format</label>
+        <select id="fmt">
+          <option value="png">PNG</option>
+          <option value="jpg" selected>JPG</option>
+          <option value="webp">WEBP</option>
+        </select>
+        <label for="dpi">Resolusi</label>
+        <select id="dpi">
+          <option value="72">Rendah (72 dpi)</option>
+          <option value="150" selected>Sedang (150 dpi)</option>
+          <option value="200">Tinggi (200 dpi)</option>
+          <option value="300">Cetak (300 dpi)</option>
+        </select>
+        <label for="pages">Halaman</label>
+        <input id="pages" class="num" style="width:150px" placeholder="semua, mis. 1-3,5">
+        <span class="spacer"></span>
+        <button class="btn primary" id="go">Konversi</button>
+        <button class="btn" id="cancel" hidden>Batal</button>
+      </div>
+      <div class="bar" id="bar" hidden><i></i></div>
+      <div class="opts" id="zipRow" hidden>
+        <span class="meta" id="sum"></span>
+        <span class="spacer"></span>
+        <button class="btn primary" id="zip">Unduh semua (ZIP)</button>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+    <p class="note">Halaman: kosongkan untuk semua halaman, atau tulis misalnya <b>1-3, 5, 8-</b> (8- artinya halaman 8 sampai akhir). 300 dpi cocok untuk dicetak tapi file-nya besar.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), grid = $('#grid');
+  let pdf = null, baseName = 'dokumen', results = [], cancelled = false;
+
+  const clearResults = () => {
+    results.forEach(r => URL.revokeObjectURL(r.url)); results = [];
+    grid.innerHTML = ''; $('#zipRow').hidden = true;
+  };
+
+  async function openPdf(file){
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)){
+      $('#panel').hidden = false; $('#info').innerHTML = '<span class="status err">✗ File ini bukan PDF.</span>'; return;
+    }
+    cancelled = true; clearResults();
+    $('#panel').hidden = false; $('#info').textContent = 'Membuka PDF…'; $('#go').disabled = true;
+    try {
+      const lib = await getPdfjs();
+      if (pdf) pdf.destroy();
+      pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+      baseName = file.name.replace(/\.[^.]+$/, '');
+      $('#info').textContent = `${file.name} · ${pdf.numPages} halaman · ${fmtSize(file.size)}`;
+      $('#go').disabled = false;
+    } catch(e){
+      pdf = null;
+      const msg = e && e.name === 'PasswordException' ? 'PDF ini dikunci password.' : 'PDF tidak bisa dibuka (rusak atau tidak didukung).';
+      $('#info').innerHTML = `<span class="status err">✗ ${msg}</span>`;
+    }
+  }
+
+  async function convert(){
+    let pages;
+    try { pages = parsePages($('#pages').value, pdf.numPages); }
+    catch(e){ $('#sum').textContent = ''; $('#info').innerHTML = `<span class="status err">✗ ${esc(e.message)}</span> · ${pdf.numPages} halaman`; return; }
+    clearResults();
+    const F = IMG_FORMATS[$('#fmt').value], dpi = +$('#dpi').value;
+    cancelled = false;
+    $('#go').hidden = true; $('#cancel').hidden = false;
+    const bar = $('#bar'); bar.hidden = false; bar.firstElementChild.style.width = '0';
+    const pad = String(pdf.numPages).length;
+
+    for (let i = 0; i < pages.length && !cancelled; i++){
+      const n = pages[i];
+      const page = await pdf.getPage(n);
+      let scale = dpi / 72;
+      const base = page.getViewport({ scale: 1 });
+      const MAX_PX = 36e6; // batas aman ukuran canvas
+      if (base.width * base.height * scale * scale > MAX_PX) scale = Math.sqrt(MAX_PX / (base.width * base.height));
+      const vp = page.getViewport({ scale });
+      const cv = document.createElement('canvas');
+      cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      const g = cv.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: g, viewport: vp }).promise;
+      page.cleanup();
+      const blob = await new Promise(r => cv.toBlob(r, F.mime, F.lossy ? 0.9 : undefined));
+      cv.width = cv.height = 0;
+      const name = `${baseName}-hal-${String(n).padStart(pad, '0')}.${F.ext}`;
+      const url = URL.createObjectURL(blob);
+      results.push({ name, url, blob });
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <img src="${url}" alt="Halaman ${n}" loading="lazy">
+        <div class="row"><span class="meta">Hal ${n} · ${fmtSize(blob.size)}</span>
+        <a class="btn primary" href="${url}" download="${esc(name)}">Unduh</a></div>`;
+      grid.appendChild(card);
+      bar.firstElementChild.style.width = ((i+1) / pages.length * 100).toFixed(1) + '%';
+      await tick();
+    }
+    $('#go').hidden = false; $('#cancel').hidden = true; bar.hidden = true;
+    if (results.length){
+      const total = results.reduce((s, r) => s + r.blob.size, 0);
+      $('#sum').textContent = `${results.length} gambar · ${fmtSize(total)}` + (cancelled ? ' (dibatalkan)' : '');
+      $('#zipRow').hidden = false;
+    }
+  }
+
+  async function downloadZip(){
+    const btn = $('#zip'); btn.disabled = true; const label = btn.textContent;
+    try {
+      btn.textContent = 'Menyiapkan ZIP…';
+      await loadScript('lib/jszip.min.js');
+      const zip = new JSZip();
+      results.forEach(r => zip.file(r.name, r.blob));
+      const blob = await zip.generateAsync({ type: 'blob' }); // gambar sudah terkompresi, tak perlu deflate
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = baseName + '-gambar.zip';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    } catch(e){ alert('Gagal membuat ZIP: ' + e.message); }
+    btn.textContent = label; btn.disabled = false;
+  }
+
+  pick.onchange = () => { openPdf(pick.files[0]); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => openPdf(e.dataTransfer.files[0]));
+  $('#go').onclick = convert;
+  $('#cancel').onclick = () => { cancelled = true; };
+  $('#zip').onclick = downloadZip;
+}
+
+/* ============================================================
+   Gabung PDF  (pdf-lib — halaman disalin utuh, teks tetap bisa dipilih)
+   ============================================================ */
+function renderMergePdf(el){
+  el.innerHTML = `
+    <h2>Gabung PDF</h2>
+    <p class="sub">Satukan beberapa file PDF jadi satu. Atur urutan file dan pilih halaman tertentu kalau perlu. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="application/pdf,.pdf" multiple hidden>
+      <strong>Klik atau tarik file PDF ke sini</strong>
+      <span>Bisa banyak file sekaligus · tambah lagi kapan saja</span>
+    </label>
+    <div class="opts">
+      <label for="fname">Nama file</label>
+      <input id="fname" class="num" style="width:180px" value="gabungan">
+      <span class="meta">.pdf</span>
+      <span class="spacer"></span>
+      <button class="btn" id="sort">Urutkan A–Z</button>
+      <button class="btn" id="clear" disabled>Bersihkan</button>
+      <button class="btn primary" id="make" disabled>Gabung PDF</button>
+    </div>
+    <div id="out"></div>
+    <div class="list" id="list"><div class="empty">Belum ada PDF.</div></div>
+    <p class="note">Kolom halaman: kosongkan untuk semua halaman, atau tulis misalnya <b>1-3, 5, 8-</b>. Halaman disalin apa adanya, jadi teks dan kualitas tidak berubah. PDF yang dikunci password tidak bisa digabung.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), list = $('#list'), out = $('#out');
+  let items = []; // {file, bytes, pages, error, range}
+  let resultUrl = null;
+
+  const usable = () => items.filter(it => it.pages && !it.error);
+  function draw(){
+    $('#make').disabled = usable().length === 0 || items.some(it => it.pages === null);
+    $('#clear').disabled = items.length === 0;
+    $('#sort').disabled = items.length < 2;
+    if (!items.length){ list.innerHTML = '<div class="empty">Belum ada PDF.</div>'; return; }
+    list.innerHTML = '';
+    items.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'item';
+      const state = it.error ? `<span class="status err">✗ ${esc(it.error)}</span>`
+        : it.pages === null ? '<span class="status">Membaca…</span>'
+        : `<span class="meta">${it.pages} hal · ${fmtSize(it.file.size)}</span>`;
+      d.innerHTML = `
+        <div class="row">
+          <span class="meta" style="width:22px;text-align:right">${i+1}</span>
+          <div style="flex:1;min-width:160px">
+            <div class="name">📄 ${esc(it.file.name)}</div>
+            ${state}
+          </div>
+          ${it.pages && !it.error ? `<input class="num" style="width:120px" placeholder="semua hal." value="${esc(it.range)}" title="Halaman yang diambil">` : ''}
+          <button class="btn" data-a="up" ${i === 0 ? 'disabled' : ''} title="Naik">↑</button>
+          <button class="btn" data-a="down" ${i === items.length-1 ? 'disabled' : ''} title="Turun">↓</button>
+          <button class="btn" data-a="del" title="Hapus">✕</button>
+        </div>`;
+      const inp = d.querySelector('input');
+      if (inp) inp.oninput = () => { it.range = inp.value; };
+      d.querySelectorAll('button').forEach(b => b.onclick = () => {
+        const a = b.dataset.a;
+        if (a === 'up') [items[i-1], items[i]] = [items[i], items[i-1]];
+        if (a === 'down') [items[i+1], items[i]] = [items[i], items[i+1]];
+        if (a === 'del') items.splice(i, 1);
+        draw();
+      });
+      list.appendChild(d);
+    });
+  }
+
+  async function addFiles(files){
+    const fresh = [...files].filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
+      .map(file => ({ file, bytes: null, pages: null, error: null, range: '' }));
+    if (!fresh.length) return;
+    items.push(...fresh); out.innerHTML = ''; draw();
+    try { await loadScript('lib/pdf-lib.min.js'); }
+    catch(e){ fresh.forEach(it => it.error = 'Library PDF gagal dimuat'); draw(); return; }
+    for (const it of fresh){
+      try {
+        it.bytes = new Uint8Array(await it.file.arrayBuffer());
+        const doc = await PDFLib.PDFDocument.load(it.bytes, { ignoreEncryption: true });
+        if (doc.isEncrypted) it.error = 'Dikunci password';
+        it.pages = doc.getPageCount();
+      } catch(e){ it.pages = 0; it.error = 'PDF rusak / tidak bisa dibaca'; }
+      draw();
+    }
+  }
+
+  async function merge(){
+    const btn = $('#make'); btn.disabled = true;
+    try {
+      const plan = usable().map(it => {
+        try { return { it, idx: parsePages(it.range, it.pages).map(n => n - 1) }; }
+        catch(e){ throw new Error(`${it.file.name}: ${e.message}`); }
+      });
+      const merged = await PDFLib.PDFDocument.create();
+      for (let k = 0; k < plan.length; k++){
+        out.innerHTML = `<p class="meta">Menggabungkan file ${k+1} dari ${plan.length}…</p>`;
+        await tick();
+        const src = await PDFLib.PDFDocument.load(plan[k].it.bytes, { ignoreEncryption: true });
+        const pages = await merged.copyPages(src, plan[k].idx);
+        pages.forEach(p => merged.addPage(p));
+      }
+      const bytes = await merged.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      resultUrl = URL.createObjectURL(blob);
+      const name = ($('#fname').value.trim() || 'gabungan').replace(/[\\/:*?"<>|]/g, '_') + '.pdf';
+      out.innerHTML = `
+        <div class="item" style="margin-bottom:14px">
+          <div class="row">
+            <div class="name">📄 ${esc(name)}</div>
+            <span class="meta">${plan.length} file · ${merged.getPageCount()} halaman · ${fmtSize(blob.size)}</span>
+            <a class="btn" href="${resultUrl}" target="_blank" rel="noopener">Lihat</a>
+            <a class="btn primary" href="${resultUrl}" download="${esc(name)}">Unduh PDF</a>
+          </div>
+        </div>`;
+    } catch(e){
+      out.innerHTML = `<p class="status err">✗ ${esc(e.message || String(e))}</p>`;
+    }
+    btn.disabled = false;
+  }
+
+  pick.onchange = () => { addFiles(pick.files); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+  $('#sort').onclick = () => { items.sort((a, b) => a.file.name.localeCompare(b.file.name, 'id', { numeric: true })); draw(); };
+  $('#clear').onclick = () => { items = []; out.innerHTML = ''; draw(); };
+  $('#make').onclick = merge;
+  draw();
+}
+
+/* ============================================================
+   Kompres PDF
+   - mode "teks": foto JPEG di dalam PDF diperkecil & dikompres ulang (pdf-lib), teks tetap utuh
+   - mode "gambar": tiap halaman dirender jadi JPEG (pdf.js) lalu disusun ulang — paling kecil
+   ============================================================ */
+const PDF_LEVELS = {
+  ringan: { maxSide: 2000, q: 0.80, dpi: 150 },
+  sedang: { maxSide: 1500, q: 0.65, dpi: 120 },
+  kuat:   { maxSide: 1000, q: 0.50, dpi: 90 },
+};
+
+async function compressPdfImages(bytes, lvl, onProgress){
+  const { PDFDocument, PDFName, PDFRawStream, PDFArray, PDFRef } = PDFLib;
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  if (doc.isEncrypted) throw new Error('PDF ini dikunci password.');
+  const ctx = doc.context;
+  const N = n => PDFName.of(n);
+  const look = o => o instanceof PDFRef ? ctx.lookup(o) : o;
+
+  const isCmyk = cs => {
+    cs = look(cs);
+    if (!cs) return false;
+    if (cs instanceof PDFName) return cs.toString() === '/DeviceCMYK';
+    if (cs instanceof PDFArray){
+      const kind = look(cs.get(0)); const s = kind && kind.toString();
+      if (s === '/DeviceCMYK') return true;
+      if (s === '/ICCBased'){ const icc = look(cs.get(1)); const n = icc && icc.dict && look(icc.dict.get(N('N'))); return n && n.toString() === '4'; }
+      return s !== '/DeviceRGB' && s !== '/DeviceGray' && s !== '/CalRGB' && s !== '/CalGray'; // Indexed/Separation/dll: lewati
+    }
+    return false;
+  };
+
+  const targets = [];
+  for (const [ref, obj] of ctx.enumerateIndirectObjects()){
+    if (!(obj instanceof PDFRawStream)) continue;
+    const d = obj.dict;
+    if (String(d.get(N('Subtype'))) !== '/Image') continue;
+    let f = look(d.get(N('Filter')));
+    if (f instanceof PDFArray) f = f.size() === 1 ? look(f.get(0)) : null;
+    if (String(f) !== '/DCTDecode') continue;
+    if (d.get(N('ImageMask')) || d.get(N('Decode')) || isCmyk(d.get(N('ColorSpace')))) continue;
+    targets.push([ref, obj]);
+  }
+
+  let replaced = 0, saved = 0;
+  for (let i = 0; i < targets.length; i++){
+    const [ref, obj] = targets[i];
+    onProgress(i / targets.length, `Mengompres foto ${i+1} dari ${targets.length}…`);
+    try {
+      const bmp = await createImageBitmap(new Blob([obj.contents], { type: 'image/jpeg' }));
+      let w = bmp.width, h = bmp.height;
+      const k = Math.min(1, lvl.maxSide / Math.max(w, h));
+      w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high';
+      g.drawImage(bmp, 0, 0, w, h); bmp.close();
+      const nb = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/jpeg', lvl.q))).arrayBuffer());
+      if (nb.length >= obj.contents.length * 0.9) continue; // tidak cukup hemat, biarkan aslinya
+      const dict = { Type: 'XObject', Subtype: 'Image', Width: w, Height: h, ColorSpace: 'DeviceRGB', BitsPerComponent: 8, Filter: 'DCTDecode' };
+      const smask = obj.dict.get(N('SMask'));
+      if (smask) dict.SMask = smask;
+      ctx.assign(ref, ctx.stream(nb, dict));
+      saved += obj.contents.length - nb.length; replaced++;
+    } catch(e){ /* gambar yang gagal didecode dibiarkan */ }
+    if (i % 3 === 0) await tick();
+  }
+  onProgress(1, 'Menyimpan…');
+  const out = await doc.save({ useObjectStreams: true });
+  return { bytes: out, info: `${replaced} dari ${targets.length} foto dikompres` };
+}
+
+async function rasterizePdf(bytes, lvl, onProgress){
+  const lib = await getPdfjs();
+  const pdf = await lib.getDocument({ data: bytes }).promise;
+  const pages = [];
+  try {
+    for (let n = 1; n <= pdf.numPages; n++){
+      onProgress((n-1) / pdf.numPages, `Merender halaman ${n} dari ${pdf.numPages}…`);
+      const page = await pdf.getPage(n);
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: lvl.dpi / 72 });
+      const cv = document.createElement('canvas');
+      cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+      const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: g, viewport: vp }).promise;
+      page.cleanup();
+      const jpg = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/jpeg', lvl.q))).arrayBuffer());
+      pages.push({ w: base.width, h: base.height, x: 0, y: 0, dw: base.width, dh: base.height, jpg, pw: cv.width, ph: cv.height });
+      cv.width = cv.height = 0;
+      await tick();
+    }
+  } finally { pdf.destroy(); }
+  onProgress(1, 'Menyimpan…');
+  return { bytes: buildPdf(pages), info: `${pages.length} halaman dijadikan gambar ${lvl.dpi} dpi` };
+}
+
+function renderCompressPdf(el){
+  el.innerHTML = `
+    <h2>Kompres PDF</h2>
+    <p class="sub">Perkecil ukuran file PDF, misalnya untuk upload berkas atau kirim email. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="application/pdf,.pdf" hidden>
+      <strong>Klik atau tarik satu file PDF ke sini</strong>
+      <span>Paling efektif untuk PDF hasil scan atau yang banyak fotonya</span>
+    </label>
+    <div id="panel" hidden>
+      <p class="meta" id="info" style="margin:14px 0 0"></p>
+      <div class="opts">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="teks" selected>Pertahankan teks (kompres foto)</option>
+          <option value="gambar">Paling kecil (halaman jadi gambar)</option>
+        </select>
+        <label for="lvl">Tingkat</label>
+        <select id="lvl">
+          <option value="ringan">Ringan — kualitas tinggi</option>
+          <option value="sedang" selected>Sedang</option>
+          <option value="kuat">Kuat — file terkecil</option>
+        </select>
+        <span class="spacer"></span>
+        <button class="btn primary" id="go">Kompres</button>
+      </div>
+      <div class="bar" id="bar" hidden><i></i></div>
+      <div id="out"></div>
+    </div>
+    <p class="note"><b>Pertahankan teks:</b> teks tetap bisa dipilih/dicari, yang diperkecil hanya foto di dalamnya — PDF yang isinya teks saja hampir tidak berubah. <b>Paling kecil:</b> setiap halaman diubah jadi gambar — cocok untuk hasil scan, tapi teks tidak bisa lagi dipilih/dicari.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), out = $('#out');
+  let file = null, bytes = null, resultUrl = null;
+
+  async function openPdf(f){
+    if (!f) return;
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)){
+      $('#panel').hidden = false; $('#info').innerHTML = '<span class="status err">✗ File ini bukan PDF.</span>'; return;
+    }
+    file = f; bytes = new Uint8Array(await f.arrayBuffer()); out.innerHTML = '';
+    $('#panel').hidden = false; $('#go').disabled = false;
+    $('#info').textContent = `${f.name} · ${fmtSize(f.size)}`;
+  }
+
+  async function run(){
+    const mode = $('#mode').value, lvl = PDF_LEVELS[$('#lvl').value];
+    const bar = $('#bar'), btn = $('#go');
+    btn.disabled = true; bar.hidden = false; bar.firstElementChild.style.width = '0';
+    const onProgress = (p, msg) => { bar.firstElementChild.style.width = (p*100).toFixed(1) + '%'; out.innerHTML = `<p class="meta">${msg}</p>`; };
+    try {
+      onProgress(0, 'Memuat…');
+      let res;
+      if (mode === 'teks'){
+        await loadScript('lib/pdf-lib.min.js');
+        res = await compressPdfImages(bytes.slice(), lvl, onProgress);
+      } else {
+        res = await rasterizePdf(bytes.slice(), lvl, onProgress);
+      }
+      const blob = res.bytes instanceof Blob ? res.bytes : new Blob([res.bytes], { type: 'application/pdf' });
+      const diff = Math.round((blob.size / file.size - 1) * 100);
+      const name = file.name.replace(/\.[^.]+$/, '') + '-kompres.pdf';
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      resultUrl = URL.createObjectURL(blob);
+      const hint = diff > -5
+        ? (mode === 'teks'
+            ? '<p class="status err" style="margin:6px 0 0">Hampir tidak berkurang — PDF ini kemungkinan isinya teks/vektor, atau fotonya sudah kecil. Coba mode "Paling kecil" kalau tidak masalah teksnya jadi gambar.</p>'
+            : '<p class="status err" style="margin:6px 0 0">Tidak lebih kecil — PDF asli sudah efisien. Lebih baik pakai file aslinya.</p>')
+        : '';
+      out.innerHTML = `
+        <div class="item" style="margin-top:14px">
+          <div class="row">
+            <div class="name">📄 ${esc(name)}</div>
+            <span class="meta">${fmtSize(file.size)} → ${fmtSize(blob.size)} (${diff > 0 ? '+' : ''}${diff}%)</span>
+            <a class="btn" href="${resultUrl}" target="_blank" rel="noopener">Lihat</a>
+            <a class="btn primary" href="${resultUrl}" download="${esc(name)}">Unduh PDF</a>
+          </div>
+          <p class="meta" style="margin:6px 0 0">${esc(res.info)}</p>
+          ${hint}
+        </div>`;
+    } catch(e){
+      const msg = e && e.name === 'PasswordException' ? 'PDF ini dikunci password.' : (e.message || String(e));
+      out.innerHTML = `<p class="status err">✗ ${esc(msg)}</p>`;
+    }
+    bar.hidden = true; btn.disabled = false;
+  }
+
+  pick.onchange = () => { openPdf(pick.files[0]); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => openPdf(e.dataTransfer.files[0]));
+  $('#go').onclick = run;
+}
+
+/* ============================================================
+   Pisah PDF  (pdf-lib, halaman disalin utuh)
+   ============================================================ */
+// "1-3, 4-6, 8-" → [[1,2,3],[4,5,6],[8..akhir]]  (tiap bagian dipisah koma = 1 file)
+function parseGroups(text, total){
+  const groups = [];
+  for (const part of text.split(/[,;]+/).map(s => s.trim()).filter(Boolean)){
+    const m = part.match(/^(\d*)\s*-\s*(\d*)$/);
+    let a, b;
+    if (m){ a = m[1] ? +m[1] : 1; b = m[2] ? +m[2] : total; }
+    else if (/^\d+$/.test(part)){ a = b = +part; }
+    else throw new Error(`"${part}" bukan rentang halaman yang valid.`);
+    if (a > b) [a, b] = [b, a];
+    a = Math.max(1, a); b = Math.min(total, b);
+    if (a > total || a > b) throw new Error(`"${part}" di luar jumlah halaman (${total}).`);
+    groups.push([...Array(b - a + 1)].map((_, i) => a + i));
+  }
+  if (!groups.length) throw new Error('Tulis dulu rentang halamannya, mis. 1-3, 4-6.');
+  return groups;
+}
+
+function renderSplitPdf(el){
+  el.innerHTML = `
+    <h2>Pisah PDF</h2>
+    <p class="sub">Pecah satu PDF jadi beberapa file, atau ambil halaman tertentu saja. Diproses di browser — tidak di-upload.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pick" accept="application/pdf,.pdf" hidden>
+      <strong>Klik atau tarik satu file PDF ke sini</strong>
+      <span>Halaman disalin utuh — teks dan kualitas tidak berubah</span>
+    </label>
+    <div id="panel" hidden>
+      <p class="meta" id="info" style="margin:14px 0 0"></p>
+      <div class="opts">
+        <label for="mode">Cara</label>
+        <select id="mode">
+          <option value="each">Setiap halaman jadi file sendiri</option>
+          <option value="groups" selected>Pisah per rentang halaman</option>
+          <option value="every">Setiap N halaman</option>
+          <option value="extract">Ambil halaman tertentu (1 file)</option>
+          <option value="remove">Hapus halaman tertentu (1 file)</option>
+        </select>
+        <input id="arg" class="num" style="width:200px">
+        <span class="spacer"></span>
+        <button class="btn primary" id="go">Pisah</button>
+      </div>
+      <p class="meta" id="preview"></p>
+      <div class="opts" id="zipRow" hidden>
+        <span class="meta" id="sum"></span>
+        <span class="spacer"></span>
+        <button class="btn primary" id="zip">Unduh semua (ZIP)</button>
+      </div>
+      <div class="list" id="list"></div>
+    </div>
+    <p class="note">Contoh rentang: <b>1-3, 4-6, 7-</b> menghasilkan 3 file (halaman 1–3, 4–6, dan 7 sampai akhir). Untuk "ambil"/"hapus", tulis misalnya <b>1, 3, 5-7</b>.</p>`;
+
+  const $ = s => el.querySelector(s);
+  const drop = $('#drop'), pick = $('#pick'), list = $('#list');
+  let src = null, total = 0, baseName = 'dokumen', results = [];
+
+  const HINTS = {
+    each: ['', 'tidak perlu diisi'],
+    groups: ['1-3, 4-6, 7-', 'rentang, pisahkan dengan koma'],
+    every: ['2', 'jumlah halaman per file'],
+    extract: ['1, 3, 5-7', 'halaman yang diambil'],
+    remove: ['2, 4', 'halaman yang dihapus'],
+  };
+
+  // hasilkan daftar grup halaman sesuai cara yang dipilih
+  function plan(){
+    const mode = $('#mode').value, arg = $('#arg').value.trim();
+    const all = [...Array(total)].map((_, i) => i + 1);
+    if (mode === 'each') return all.map(n => [n]);
+    if (mode === 'groups') return parseGroups(arg, total);
+    if (mode === 'every'){
+      const n = parseInt(arg, 10);
+      if (!(n >= 1)) throw new Error('Isi jumlah halaman per file, mis. 2.');
+      const g = []; for (let i = 0; i < total; i += n) g.push(all.slice(i, i + n)); return g;
+    }
+    if (!arg) throw new Error(`Tulis halaman yang ${mode === 'extract' ? 'diambil' : 'dihapus'}, mis. 1, 3, 5-7.`);
+    const picked = parsePages(arg, total);
+    if (mode === 'extract') return [picked];
+    const keep = all.filter(n => !picked.includes(n));
+    if (!keep.length) throw new Error('Semua halaman terhapus — sisakan minimal satu.');
+    return [keep];
+  }
+  const label = g => g.length === 1 ? `hal ${g[0]}` : (g[g.length-1] - g[0] === g.length - 1 ? `hal ${g[0]}-${g[g.length-1]}` : `${g.length} hal`);
+
+  function updatePreview(){
+    if (!src) return;
+    const mode = $('#mode').value, [ph, title] = HINTS[mode];
+    $('#arg').placeholder = ph; $('#arg').title = title; $('#arg').hidden = mode === 'each';
+    try {
+      const g = plan();
+      $('#preview').textContent = `Hasil: ${g.length} file — ` + g.slice(0, 8).map(label).join(', ') + (g.length > 8 ? ', …' : '');
+      $('#go').disabled = false;
+    } catch(e){
+      // belum diisi → petunjuk biasa; sudah diisi tapi salah → merah
+      $('#preview').innerHTML = $('#arg').value.trim() ? `<span class="status err">${esc(e.message)}</span>` : esc(e.message);
+      $('#go').disabled = true;
+    }
+  }
+
+  async function openPdf(f){
+    if (!f) return;
+    results = []; list.innerHTML = ''; $('#zipRow').hidden = true;
+    $('#panel').hidden = false; $('#go').disabled = true;
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)){ $('#info').innerHTML = '<span class="status err">✗ File ini bukan PDF.</span>'; return; }
+    $('#info').textContent = 'Membaca PDF…';
+    try {
+      await loadScript('lib/pdf-lib.min.js');
+      src = await PDFLib.PDFDocument.load(new Uint8Array(await f.arrayBuffer()), { ignoreEncryption: true });
+      if (src.isEncrypted){ src = null; throw new Error('PDF ini dikunci password.'); }
+      total = src.getPageCount();
+      baseName = f.name.replace(/\.[^.]+$/, '');
+      $('#info').textContent = `${f.name} · ${total} halaman · ${fmtSize(f.size)}`;
+      updatePreview();
+    } catch(e){
+      src = null;
+      $('#info').innerHTML = `<span class="status err">✗ ${esc(e.message.includes('password') ? e.message : 'PDF rusak / tidak bisa dibaca.')}</span>`;
+    }
+  }
+
+  async function split(){
+    let groups;
+    try { groups = plan(); } catch(e){ updatePreview(); return; }
+    const btn = $('#go'); btn.disabled = true;
+    results.forEach(r => URL.revokeObjectURL(r.url)); results = []; list.innerHTML = ''; $('#zipRow').hidden = true;
+    const pad = String(total).length, p = n => String(n).padStart(pad, '0');
+    for (let i = 0; i < groups.length; i++){
+      const g = groups[i];
+      $('#preview').textContent = `Membuat file ${i+1} dari ${groups.length}…`;
+      const doc = await PDFLib.PDFDocument.create();
+      (await doc.copyPages(src, g.map(n => n - 1))).forEach(pg => doc.addPage(pg));
+      const blob = new Blob([await doc.save()], { type: 'application/pdf' });
+      const mode = $('#mode').value;
+      const suffix = mode === 'extract' ? 'pilihan' : mode === 'remove' ? 'sudah-dihapus' : g.length === 1 ? `hal-${p(g[0])}` : label(g).startsWith('hal ') ? `hal-${p(g[0])}-${p(g[g.length-1])}` : `bagian-${i+1}`;
+      const name = `${baseName}-${suffix}.pdf`;
+      const url = URL.createObjectURL(blob);
+      results.push({ name, url, blob });
+      const item = document.createElement('div');
+      item.className = 'item';
+      item.innerHTML = `
+        <div class="row">
+          <div class="name">📄 ${esc(name)}</div>
+          <span class="meta">${g.length} hal · ${fmtSize(blob.size)}</span>
+          <a class="btn" href="${url}" target="_blank" rel="noopener">Lihat</a>
+          <a class="btn primary" href="${url}" download="${esc(name)}">Unduh</a>
+        </div>`;
+      list.appendChild(item);
+      if (i % 5 === 0) await tick();
+    }
+    $('#preview').textContent = '';
+    $('#sum').textContent = `${results.length} file · ${fmtSize(results.reduce((s, r) => s + r.blob.size, 0))}`;
+    $('#zipRow').hidden = results.length < 2;
+    btn.disabled = false;
+  }
+
+  async function downloadZip(){
+    const btn = $('#zip'), lbl = btn.textContent; btn.disabled = true; btn.textContent = 'Menyiapkan ZIP…';
+    try {
+      await loadScript('lib/jszip.min.js');
+      const zip = new JSZip(); results.forEach(r => zip.file(r.name, r.blob));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(await zip.generateAsync({ type: 'blob' }));
+      a.download = baseName + '-pisah.zip';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    } catch(e){ alert('Gagal membuat ZIP: ' + e.message); }
+    btn.textContent = lbl; btn.disabled = false;
+  }
+
+  pick.onchange = () => { openPdf(pick.files[0]); pick.value = ''; };
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => openPdf(e.dataTransfer.files[0]));
+  $('#mode').onchange = () => { $('#arg').value = ''; updatePreview(); };
+  $('#arg').oninput = updatePreview;
+  $('#go').onclick = split;
+  $('#zip').onclick = downloadZip;
+}
+
+openTool((location.hash || '').slice(1));
+</script>
+</body>
+</html>
