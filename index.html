@@ -3,10 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Converter Hub · Amajing Labs</title>
+<title>Amajing Converter</title>
+<meta name="description" content="Converter file di browser: video, audio, gambar, PDF, Word, dan kalkulator. File tidak di-upload ke mana pun.">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="brand/ikon.svg" type="image/svg+xml">
+<link rel="icon" href="brand/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
 <meta name="theme-color" content="#0B1F3A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Amajing Converter">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <script src="lib/lame.min.js"></script>
 <script src="lib/gifenc.js"></script>
 <style>
@@ -46,6 +53,9 @@
   .foot .dot{margin:0 8px}
   .foot a{color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap}
   .foot a:hover{text-decoration:underline}
+  .install-btn{font:inherit;font-weight:600;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;white-space:nowrap}
+  .install-btn:hover{text-decoration:underline}
+  .install-help{max-width:420px;margin:10px auto 0;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);text-align:left;font-size:13px;line-height:1.5}
   h2{margin:0 0 4px;font-size:22px}
   .sub{color:var(--muted);margin:0 0 20px}
   .drop{display:block;border:2px dashed var(--line);border-radius:14px;background:var(--panel);padding:34px 20px;text-align:center;cursor:pointer;transition:.15s}
@@ -138,10 +148,10 @@
 <body>
 <div class="app">
   <nav>
-    <h1 style="margin:0"><a class="brand" href="#" title="Converter Hub · Amajing Labs">
+    <h1 style="margin:0"><a class="brand" href="#" title="Amajing Converter">
       <img class="logo-light" src="brand/logo.svg" alt="Amajing Labs">
       <img class="logo-dark" src="brand/logo-gelap.svg" alt="Amajing Labs">
-      <span>Converter Hub</span>
+      <span>Converter</span>
     </a></h1>
     <div class="tools" id="toolNav"></div>
   </nav>
@@ -151,6 +161,11 @@
       Dibuat oleh<img class="logo-inline logo-light" src="brand/logo-kecil.svg" alt="Amajing Labs"><img class="logo-inline logo-dark" src="brand/logo-kecil-gelap.svg" alt="Amajing Labs">
       <span class="dot">·</span>
       <a href="https://forms.gle/fZAtNMCwKqhQhgpKA" target="_blank" rel="noopener">💬 Kirim masukan</a>
+      <span class="install-wrap" id="installWrap" hidden>
+        <span class="dot">·</span>
+        <button type="button" class="install-btn" id="installBtn">📲 Instal aplikasi</button>
+      </span>
+      <div class="install-help" id="installHelp" hidden></div>
     </footer>
   </div>
 </div>
@@ -2810,6 +2825,44 @@ function renderCalculator(el){
   document.addEventListener('keydown', onKey);
   drawHistory(); show();
 }
+
+/* ============================================================
+   Aplikasi yang bisa di-instal (PWA): service worker + tombol "Instal aplikasi"
+   ============================================================ */
+(function setupInstall(){
+  if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+  const wrap = document.getElementById('installWrap'), btn = document.getElementById('installBtn'), help = document.getElementById('installHelp');
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (standalone) return; // sudah dibuka sebagai aplikasi
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const isMobile = isIOS || /Android|Mobi/i.test(ua);
+  let deferred = null;
+
+  // Chrome, Edge, Samsung Internet: browser memberi tahu kalau aplikasi bisa di-instal
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; wrap.hidden = false; help.hidden = true; });
+  window.addEventListener('appinstalled', () => { wrap.hidden = true; help.hidden = true; deferred = null; });
+
+  // iPhone/iPad & browser lain tanpa tombol instal otomatis → tampilkan petunjuk manual
+  if (isIOS) wrap.hidden = false;
+  else if (isMobile) setTimeout(() => { if (!deferred) wrap.hidden = false; }, 3000);
+
+  btn.addEventListener('click', async () => {
+    if (deferred){
+      deferred.prompt();
+      const { outcome } = await deferred.userChoice;
+      if (outcome === 'accepted') wrap.hidden = true;
+      deferred = null;
+      return;
+    }
+    help.hidden = !help.hidden;
+    help.innerHTML = isIOS
+      ? 'Di <b>Safari</b>: ketuk tombol <b>Bagikan</b> (kotak dengan panah ke atas ⬆️), gulir, lalu pilih <b>"Tambah ke Layar Utama"</b> → <b>Tambah</b>.'
+      : 'Buka menu browser (<b>⋮</b> atau <b>≡</b>), lalu pilih <b>"Instal aplikasi"</b> atau <b>"Tambahkan ke layar utama"</b>. Paling lancar di <b>Chrome</b> atau <b>Samsung Internet</b>.';
+  });
+})();
 
 openTool((location.hash || '').slice(1));
 </script>

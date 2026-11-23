@@ -1,0 +1,20 @@
+{
+  "name": "Amajing Converter",
+  "short_name": "Amajing Converter",
+  "description": "Converter file di browser: video, audio, gambar, PDF, Word, dan kalkulator. File tidak di-upload ke mana pun.",
+  "lang": "id",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B1F3A",
+  "theme_color": "#0B1F3A",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    { "src": "brand/app/ikon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "brand/app/ikon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "brand/app/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "brand/app/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

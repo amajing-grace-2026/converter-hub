@@ -1,4 +1,4 @@
-# Converter Hub
+# Amajing Converter
 
 Kumpulan converter yang jalan langsung di browser. File tidak di-upload ke server mana pun — semua diproses di perangkat sendiri.
 
@@ -12,6 +12,8 @@ Kumpulan converter yang jalan langsung di browser. File tidak di-upload ke serve
 - **Lainnya:** Kalkulator
 
 Paling cocok di Chrome atau Edge versi terbaru (Kompres Video butuh WebCodecs).
+
+**Instal di HP:** buka link di Chrome/Samsung Internet (Android) lalu pilih "Instal aplikasi", atau di Safari (iPhone) Bagikan → "Tambah ke Layar Utama".
 
 ## Library (di folder `lib/`)
 
