@@ -21,3 +21,6 @@ Paling cocok di Chrome atau Edge versi terbaru (Kompres Video butuh WebCodecs).
 - [JSZip](https://github.com/Stuk/jszip) — unduh ZIP (MIT)
 - [mammoth.js](https://github.com/mwilliamson/mammoth.js) — baca file .docx (BSD-2-Clause)
 - [Mediabunny](https://github.com/Vanilagy/mediabunny) — kompres video (MPL-2.0)
+
+---
+Dibuat oleh **Amajing Labs** · Masukan & laporan kesalahan: https://forms.gle/fZAtNMCwKqhQhgpKA

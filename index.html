@@ -27,6 +27,12 @@
   nav button:hover{background:var(--soft)}
   nav button.active{background:var(--accent);color:var(--accent-ink);font-weight:600}
   main{padding:28px;max-width:860px;width:100%}
+  .content{display:flex;flex-direction:column;min-height:100vh;min-width:0}
+  .foot{margin-top:auto;padding:18px 16px 22px;text-align:center;font-size:13px;color:var(--muted);border-top:1px solid var(--line)}
+  .foot strong{color:var(--ink);font-weight:600}
+  .foot .dot{margin:0 8px}
+  .foot a{color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap}
+  .foot a:hover{text-decoration:underline}
   h2{margin:0 0 4px;font-size:22px}
   .sub{color:var(--muted);margin:0 0 20px}
   .drop{display:block;border:2px dashed var(--line);border-radius:14px;background:var(--panel);padding:34px 20px;text-align:center;cursor:pointer;transition:.15s}
@@ -102,7 +108,14 @@
     <h1>🔁 Converter Hub</h1>
     <div class="tools" id="toolNav"></div>
   </nav>
-  <main id="view"></main>
+  <div class="content">
+    <main id="view"></main>
+    <footer class="foot">
+      Dibuat oleh <strong>Amajing Labs</strong>
+      <span class="dot">·</span>
+      <a href="https://forms.gle/fZAtNMCwKqhQhgpKA" target="_blank" rel="noopener">💬 Kirim masukan</a>
+    </footer>
+  </div>
 </div>
 
 <script>
