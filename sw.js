@@ -1,7 +1,7 @@
 // Service worker Amajing Converter — supaya bisa di-instal & tetap terbuka saat offline.
 // Strategi "jaringan dulu": selalu ambil versi terbaru dari internet; cache hanya cadangan saat offline.
 // Library besar (PDF, video, HEIC) ikut tersimpan setelah pertama kali dipakai.
-const CACHE = 'amajing-converter-v1';
+const CACHE = 'amajing-converter-v2';
 const CORE = ['./', './index.html', './manifest.webmanifest', './brand/ikon.svg', './brand/logo.svg',
   './brand/logo-gelap.svg', './brand/app/ikon-192.png', './brand/app/maskable-512.png'];
 
