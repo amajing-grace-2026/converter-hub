@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Panduan pemakaian Amajing Converter: cara memakai setiap alat ubah file.">
+<meta name="theme-color" content="#0B1F3A">
+<link rel="icon" href="../brand/ikon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
+<title>Panduan Amajing Converter</title>
+<style>
+@font-face{font-family:'Jakarta';src:url('PlusJakartaSans.ttf') format('truetype');font-weight:200 800}
+@page{size:A4;margin:16mm 16mm 18mm}
+@page cover{margin:0}
+.coverpage{page:cover}
+:root{--navy:#0B1F3A;--blue:#0057B8;--sky:#5AA9FF;--ink:#1d2433;--mute:#5b6577;--line:#dbe3ee;--soft:#f2f6fb}
+*{box-sizing:border-box}
+html,body{margin:0;background:#fff}
+body{font-family:'Jakarta','Segoe UI',Arial,sans-serif;color:var(--ink);font-size:10.5pt;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+h1,h2,h3{color:var(--navy);line-height:1.25;margin:0}
+h2{font-size:17pt;font-weight:800;margin:0 0 4px}
+h3{font-size:11.5pt;font-weight:700;margin:14px 0 4px}
+p{margin:0 0 8px}
+b{color:var(--navy)}
+a{color:var(--blue);text-decoration:none}
+.page{page-break-after:always;break-after:page}
+.page:last-child{page-break-after:auto;break-after:auto}
+
+/* sampul */
+.cover{height:296mm;display:flex;flex-direction:column;justify-content:space-between;background:var(--navy);color:#fff;margin:0;padding:26mm 22mm 20mm;position:relative;overflow:hidden}
+.cover:before{content:"";position:absolute;right:-60mm;top:-40mm;width:170mm;height:170mm;border-radius:50%;background:radial-gradient(circle,rgba(90,169,255,.35),rgba(90,169,255,0) 70%)}
+.cover .logo{width:70mm;position:relative}
+.cover .mid{position:relative}
+.cover .tag{display:inline-block;font-size:9pt;letter-spacing:.18em;text-transform:uppercase;color:var(--sky);font-weight:700;margin-bottom:10px}
+.cover h1{color:#fff;font-size:36pt;font-weight:800;letter-spacing:-.01em}
+.cover .lead{font-size:13pt;color:#c9d8ee;max-width:130mm;margin-top:12px}
+.cover .foot{position:relative;font-size:9.5pt;color:#9fb3cf;border-top:1px solid rgba(255,255,255,.15);padding-top:10px;display:flex;justify-content:space-between}
+.cover .icon{width:26mm;border-radius:6mm;position:relative;margin-bottom:12mm;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+
+/* isi */
+.kicker{font-size:8.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:2px}
+.sub{color:var(--mute);margin-bottom:12px}
+.rule{height:3px;width:28mm;background:linear-gradient(90deg,var(--blue),var(--sky));border-radius:2px;margin:6px 0 14px}
+.tool{border:1px solid var(--line);border-radius:10px;padding:12px 14px 10px;margin:0 0 12px;break-inside:avoid;page-break-inside:avoid}
+.tool h3{margin:0 0 2px;display:flex;align-items:center;gap:8px}
+.tool h3 .ic{display:inline-flex;width:22px;height:22px;border-radius:6px;background:var(--soft);align-items:center;justify-content:center;font-size:11pt}
+.tool .what{color:var(--mute);margin-bottom:6px}
+ol,ul{margin:0 0 6px;padding-left:18px}
+li{margin:1px 0}
+.opt{width:100%;border-collapse:collapse;margin:4px 0 6px;font-size:9.5pt}
+.opt td{padding:3px 8px;border-top:1px solid var(--line);vertical-align:top}
+.opt td:first-child{width:28mm;font-weight:700;color:var(--navy);white-space:nowrap}
+.tip{background:var(--soft);border-left:3px solid var(--sky);border-radius:0 8px 8px 0;padding:6px 10px;font-size:9.5pt;margin:6px 0 2px}
+.tip b{color:var(--blue)}
+.warn{background:#fff6e5;border-left-color:#f0a020}
+.warn b{color:#a76300}
+code,.k{font-family:Consolas,'Courier New',monospace;font-size:9pt;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;break-inside:avoid}
+.card h3{margin-top:0}
+.toc{columns:2;column-gap:10mm;margin-top:6px}
+.toc .g{break-inside:avoid;margin-bottom:10px}
+.toc .g b{display:block;font-size:9pt;letter-spacing:.12em;text-transform:uppercase;color:var(--blue);margin-bottom:2px}
+.toc .g span{display:block;padding:2px 0;border-bottom:1px dotted var(--line)}
+.steps{counter-reset:s;list-style:none;padding:0;margin:8px 0}
+.steps li{counter-increment:s;position:relative;padding:6px 0 6px 34px;margin:0}
+.steps li:before{content:counter(s);position:absolute;left:0;top:5px;width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-weight:700;font-size:10pt;display:flex;align-items:center;justify-content:center}
+.badge{display:inline-block;font-size:8pt;font-weight:700;padding:1px 7px;border-radius:20px;background:var(--soft);color:var(--blue);border:1px solid var(--line);margin-left:4px;vertical-align:1px}
+.end{text-align:center;margin-top:16px}
+.end img{width:52mm;margin-bottom:6px}
+.end p{color:var(--mute);font-size:9.5pt}
+</style>
+<link rel="stylesheet" href="web.css">
+</head>
+<body>
+<header class="topbar"><a class="back" href="../">← <span>Kembali ke </span>aplikasi</a><span class="sp"></span><a class="dl" href="Panduan-Amajing-Converter.pdf" download>⬇ Unduh PDF</a></header>
+<main>
+
+<!-- ===== SAMPUL ===== -->
+<section class="page coverpage">
+  <div class="cover">
+    <img class="logo" src="../brand/logo-gelap.svg" alt="Amajing Labs">
+    <div class="mid">
+      <img class="icon" src="../brand/app/ikon-512.png" alt="">
+      <div class="tag">Panduan Pemakaian</div>
+      <h1>Amajing Converter</h1>
+      <p class="lead">Semua alat ubah file dalam satu aplikasi. Video, gambar, PDF, dan Word. Gratis, dan file tidak pernah di-upload ke mana pun.</p>
+    </div>
+    <div class="foot"><span>amajing-grace-2026.github.io/converter-hub</span><span>Amajing Labs</span></div>
+  </div>
+</section>
+
+<!-- ===== MULAI ===== -->
+<section class="page">
+  <div class="kicker">Mulai di sini</div>
+  <h2>Kenalan dulu</h2>
+  <div class="rule"></div>
+  <p>Amajing Converter adalah kumpulan alat untuk mengubah dan merapikan file langsung dari browser. Tidak perlu daftar akun dan tidak perlu memasang program apa pun.</p>
+
+  <div class="tip"><b>File kamu tetap di perangkatmu.</b> Semua proses berjalan di dalam browser, di laptop atau HP kamu sendiri. File tidak dikirim ke server mana pun, jadi aman juga untuk dokumen pribadi atau kantor.</div>
+
+  <h3>Cara membuka</h3>
+  <ol class="steps">
+    <li>Buka <b>Chrome</b> atau <b>Edge</b> versi terbaru, lalu kunjungi<br><a href="https://amajing-grace-2026.github.io/converter-hub/">amajing-grace-2026.github.io/converter-hub</a></li>
+    <li>Pilih alat yang kamu perlukan dari menu. Di laptop menunya ada di kiri; di HP menunya ada di atas dan bisa digeser ke samping.</li>
+    <li><b>Klik kotak bergaris putus-putus</b> untuk memilih file, atau <b>tarik file</b> dari folder langsung ke kotak itu.</li>
+    <li>Atur pilihan bila perlu, tekan tombol biru (Konversi, Kompres, Gabung, dan lain-lain), lalu tekan <b>Unduh</b>. Hasilnya masuk ke folder <i>Downloads</i>.</li>
+  </ol>
+
+  <h3>Daftar alat</h3>
+  <div class="toc">
+    <div class="g"><b>Audio &amp; Video</b><span>MP4 → MP3</span><span>Video → GIF</span><span>Kompres Video</span></div>
+    <div class="g"><b>Gambar</b><span>JPG / PNG / WEBP (termasuk HEIC)</span></div>
+    <div class="g"><b>Dokumen</b><span>Word → PDF</span><span>PDF → Word</span><span>Gambar → PDF</span><span>PDF → Gambar</span><span>Gabung PDF</span><span>Pisah PDF</span><span>Kompres PDF</span></div>
+    <div class="g"><b>Lainnya</b><span>Kalkulator</span></div>
+  </div>
+
+  <h3>Cara menulis nomor halaman</h3>
+  <p>Beberapa alat PDF meminta nomor halaman. Formatnya sama di semua alat:</p>
+  <table class="opt">
+    <tr><td><code>5</code></td><td>halaman 5 saja</td></tr>
+    <tr><td><code>1-3</code></td><td>halaman 1 sampai 3</td></tr>
+    <tr><td><code>1-3, 5, 8</code></td><td>halaman 1, 2, 3, 5, dan 8 (pisahkan dengan koma)</td></tr>
+    <tr><td><code>7-</code></td><td>halaman 7 sampai halaman terakhir</td></tr>
+    <tr><td><i>dikosongkan</i></td><td>semua halaman</td></tr>
+  </table>
+</section>
+
+<!-- ===== AUDIO & VIDEO ===== -->
+<section class="page">
+  <div class="kicker">Bagian 1</div>
+  <h2>Audio &amp; Video</h2>
+  <div class="rule"></div>
+
+  <div class="tool">
+    <h3><span class="ic">🎵</span> MP4 → MP3</h3>
+    <p class="what">Mengambil suara dari video menjadi file MP3, misalnya lagu atau rekaman rapat.</p>
+    <ol>
+      <li>Pilih satu atau beberapa video sekaligus (MP4, M4A, MOV, WEBM).</li>
+      <li>Pilih <b>Kualitas</b>. Setiap file langsung diproses.</li>
+      <li>Tekan <b>Unduh MP3</b> per file, atau <b>Unduh semua</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Kualitas</td><td>128 kbps = file kecil · <b>192 kbps = standar</b> · 320 kbps = terbaik untuk musik</td></tr>
+    </table>
+  </div>
+
+  <div class="tool">
+    <h3><span class="ic">🎞️</span> Video → GIF</h3>
+    <p class="what">Membuat GIF bergerak dari potongan video, misalnya untuk stiker atau presentasi.</p>
+    <ol>
+      <li>Pilih satu video. Videonya akan muncul dan bisa diputar.</li>
+      <li>Tentukan <b>Mulai</b> dan <b>Selesai</b> (dalam detik). Cara mudahnya: putar video sampai bagian yang diinginkan, lalu tekan <b>⏱ dari video</b>.</li>
+      <li>Atur FPS, lebar, dan pengulangan, lalu buat GIF dan tekan <b>Unduh GIF</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>FPS</td><td>Jumlah gambar per detik. Makin tinggi makin halus, tapi file makin besar. <b>12</b> sudah pas.</td></tr>
+      <tr><td>Lebar</td><td>240–800 px. <b>480 px</b> cocok untuk kebanyakan keperluan.</td></tr>
+      <tr><td>Ulang</td><td>Terus-menerus, atau diputar sekali saja.</td></tr>
+    </table>
+    <div class="tip"><b>Tips:</b> GIF paling bagus untuk potongan pendek (maksimal sekitar 15 detik). Potongan yang panjang membuat file sangat besar.</div>
+  </div>
+
+  <div class="tool">
+    <h3><span class="ic">📦</span> Kompres Video</h3>
+    <p class="what">Memperkecil ukuran video supaya muat dikirim lewat WhatsApp atau email. Hasilnya selalu MP4.</p>
+    <ol>
+      <li>Pilih satu video (MP4, MOV, WEBM, MKV).</li>
+      <li>Pilih <b>Cara</b>: isi <b>target ukuran</b> dalam MB, atau pilih tingkat kualitas.</li>
+      <li>Atur resolusi, FPS, dan suara bila perlu, tekan <b>Kompres</b>, lalu <b>Unduh MP4</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Target ukuran</td><td>Contoh: isi <b>16</b> MB agar muat di WhatsApp.</td></tr>
+      <tr><td>Resolusi</td><td>Asli, 1080p, <b>720p</b>, 480p, 360p. Makin kecil, makin kecil pula filenya.</td></tr>
+      <tr><td>Suara</td><td>Normal, Hemat, atau Hapus suara.</td></tr>
+    </table>
+    <div class="tip warn"><b>Perlu Chrome/Edge terbaru.</b> Video panjang butuh waktu lebih lama, jadi biarkan tab tetap terbuka sampai selesai.</div>
+  </div>
+</section>
+
+<!-- ===== GAMBAR ===== -->
+<section class="page">
+  <div class="kicker">Bagian 2</div>
+  <h2>Gambar</h2>
+  <div class="rule"></div>
+
+  <div class="tool">
+    <h3><span class="ic">🖼️</span> JPG / PNG / WEBP <span class="badge">termasuk HEIC</span></h3>
+    <p class="what">Mengubah format gambar sekaligus memperkecil ukurannya. Alat ini juga bisa mengubah foto <b>HEIC</b> dari iPhone atau Samsung menjadi JPG agar bisa dibuka di mana saja.</p>
+    <ol>
+      <li>Pilih satu atau banyak gambar sekaligus (JPG, PNG, WEBP, HEIC/HEIF, GIF, BMP, AVIF).</li>
+      <li>Pilih format tujuan di <b>Jadi</b>, lalu atur kualitas dan ukurannya. Hasilnya langsung diperbarui setiap kali pengaturan diubah.</li>
+      <li>Tekan <b>Unduh</b> per gambar, atau <b>Unduh semua</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Jadi</td><td><b>JPG</b> = foto, paling umum · <b>PNG</b> = gambar dengan latar transparan atau tulisan tajam · <b>WEBP</b> = paling kecil, cocok untuk web</td></tr>
+      <tr><td>Kualitas</td><td>10–100%. <b>85%</b> sudah tidak terlihat bedanya dengan yang asli.</td></tr>
+      <tr><td>Ukuran</td><td>Asli, atau batasi sisi terpanjang (3840 sampai 512 px). <b>1920 px</b> cocok untuk dikirim lewat chat.</td></tr>
+    </table>
+    <div class="tip"><b>Foto iPhone (.heic):</b> pilih <b>Jadi → JPG</b>. Membuka HEIC pertama kali butuh beberapa detik.</div>
+  </div>
+
+  <div class="kicker" style="margin-top:22px">Bagian 3</div>
+  <h2>Dokumen</h2>
+  <div class="rule"></div>
+
+  <div class="tool">
+    <h3><span class="ic">📝</span> Word → PDF</h3>
+    <p class="what">Mengubah dokumen Word menjadi PDF. Ada dua cara:</p>
+    <div class="grid">
+      <div class="card"><h3>A. Buka file .docx</h3>Tekan <b>📂 Buka file .docx</b>, atau tarik file ke kertas putih. Gambar ikut terbawa, tetapi warna dan jenis huruf bisa sedikit berbeda.</div>
+      <div class="card"><h3>B. Salin-tempel dari Word</h3>Di Word tekan <span class="k">Ctrl+A</span> lalu <span class="k">Ctrl+C</span>. Klik kertas putih di aplikasi dan tekan <span class="k">Ctrl+V</span>.</div>
+    </div>
+    <ol style="margin-top:8px">
+      <li>Rapikan bila perlu dengan toolbar (tebal, judul, daftar, rata, <b>⤓ Hal</b> untuk pindah halaman).</li>
+      <li>Atur kertas (A4, F4/Folio, Letter), arah, margin, dan huruf. Isi <b>Nama file</b>.</li>
+      <li>Tekan <b>Simpan sebagai PDF</b>. Di jendela cetak pilih <b>Tujuan → Simpan sebagai PDF</b>, lalu <b>Simpan</b>.</li>
+    </ol>
+    <div class="tip"><b>Tips:</b> buka <b>Setelan lainnya</b> di jendela cetak dan matikan <b>Header dan footer</b> supaya tanggal dan alamat web tidak ikut tercetak. Tulisanmu tersimpan otomatis, jadi tidak hilang meskipun tab tertutup.</div>
+  </div>
+</section>
+
+<!-- ===== DOKUMEN (lanjutan) ===== -->
+<section class="page">
+  <div class="tool">
+    <h3><span class="ic">📄</span> PDF → Word</h3>
+    <p class="what">Mengubah PDF menjadi file Word (.docx) yang bisa diedit. Hasil terbaik didapat dari PDF yang dibuat dari komputer, bukan hasil scan.</p>
+    <ol>
+      <li>Pilih satu file PDF.</li>
+      <li>Pilih <b>Mode</b>, lalu tekan <b>Konversi ke Word</b> dan <b>Unduh Word</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Tata letak persis</td><td><b>Pilihan utama.</b> Tampilan sama seperti PDF, dan teksnya tetap bisa diedit. Cocok untuk surat, formulir, atau brosur.</td></tr>
+      <tr><td>Alur teks biasa</td><td>Teks mengalir seperti dokumen Word biasa. Enak untuk mengedit tulisan panjang, tetapi gambar dan tabel tidak ikut.</td></tr>
+      <tr><td>Gambar saja</td><td>Setiap halaman menjadi gambar. Tampilannya 100% sama, tetapi tidak bisa diedit.</td></tr>
+    </table>
+    <div class="tip warn"><b>PDF hasil scan</b> berisi foto halaman, bukan teks, sehingga teksnya tidak bisa diedit.</div>
+  </div>
+
+  <div class="tool">
+    <h3><span class="ic">🗂️</span> Gambar → PDF</h3>
+    <p class="what">Menyatukan beberapa foto menjadi satu PDF, misalnya foto KTP, ijazah, atau nota.</p>
+    <ol>
+      <li>Pilih gambar-gambarnya (bisa ditambah kapan saja, termasuk HEIC).</li>
+      <li>Atur urutan dengan <b>↑ ↓</b>, hapus dengan <b>✕</b>, atau tekan <b>Urutkan A–Z</b>.</li>
+      <li>Pilih kertas, arah, margin, dan kualitas, isi nama file, lalu buat PDF dan tekan <b>Unduh PDF</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Kertas</td><td>A4, F4/Folio, Letter, atau <b>Sesuai gambar</b> (tanpa tepi putih).</td></tr>
+      <tr><td>Kualitas</td><td>Tinggi, <b>Sedang</b>, atau Kecil (hemat). Pilih <b>Kecil</b> untuk upload berkas yang ukurannya dibatasi.</td></tr>
+    </table>
+  </div>
+
+  <div class="tool">
+    <h3><span class="ic">🖼️</span> PDF → Gambar</h3>
+    <p class="what">Mengubah setiap halaman PDF menjadi gambar.</p>
+    <ol>
+      <li>Pilih satu PDF, lalu pilih format (PNG, JPG, WEBP) dan resolusi.</li>
+      <li>Isi <b>Halaman</b> (misalnya <code>1-3,5</code>), atau kosongkan untuk semua halaman. Tekan <b>Konversi</b>.</li>
+      <li>Unduh per halaman, atau <b>Unduh semua (ZIP)</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Resolusi</td><td>72 dpi (layar) · <b>150 dpi (sedang)</b> · 200 dpi · 300 dpi (untuk dicetak)</td></tr>
+    </table>
+  </div>
+
+  <div class="tool">
+    <h3><span class="ic">🔗</span> Gabung PDF</h3>
+    <p class="what">Menyatukan beberapa file PDF menjadi satu.</p>
+    <ol>
+      <li>Pilih beberapa PDF. File bisa ditambah lagi kapan saja.</li>
+      <li>Atur urutan dengan <b>↑ ↓</b>. Di kotak samping tiap file, isi halaman yang diambil (misalnya <code>1-2</code>), atau kosongkan untuk semua halaman.</li>
+      <li>Isi nama file, gabungkan, lalu tekan <b>Unduh PDF</b>.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===== DOKUMEN (lanjutan 2) + LAINNYA ===== -->
+<section class="page">
+  <div class="tool">
+    <h3><span class="ic">✂️</span> Pisah PDF</h3>
+    <p class="what">Memecah satu PDF menjadi beberapa file, atau mengambil dan membuang halaman tertentu. Kualitasnya tidak berubah.</p>
+    <ol>
+      <li>Pilih satu PDF, lalu pilih <b>Cara</b> dan isi kotak di sebelahnya.</li>
+      <li>Periksa pratinjau pembagian di bawahnya, tekan <b>Pisah</b>, lalu unduh per file atau <b>Unduh semua (ZIP)</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Setiap halaman</td><td>Setiap halaman menjadi satu file.</td></tr>
+      <tr><td>Per rentang</td><td>Contoh <code>1-3, 4-6, 7-</code> → tiga file.</td></tr>
+      <tr><td>Setiap N halaman</td><td>Contoh <code>2</code> → setiap 2 halaman menjadi satu file.</td></tr>
+      <tr><td>Ambil halaman</td><td>Contoh <code>1, 3, 5-7</code> → satu file berisi halaman itu saja.</td></tr>
+      <tr><td>Hapus halaman</td><td>Contoh <code>2, 4</code> → satu file tanpa halaman 2 dan 4.</td></tr>
+    </table>
+  </div>
+
+  <div class="tool">
+    <h3><span class="ic">🗜️</span> Kompres PDF</h3>
+    <p class="what">Memperkecil ukuran PDF untuk upload berkas atau email. Paling efektif untuk PDF hasil scan atau yang banyak fotonya.</p>
+    <ol>
+      <li>Pilih satu PDF, lalu pilih <b>Mode</b> dan <b>Tingkat</b>.</li>
+      <li>Tekan <b>Kompres</b>. Ukuran sebelum dan sesudah akan ditampilkan. Tekan <b>Lihat</b> untuk memeriksa hasilnya, lalu <b>Unduh PDF</b>.</li>
+    </ol>
+    <table class="opt">
+      <tr><td>Pertahankan teks</td><td><b>Pilihan utama.</b> Hanya foto di dalam PDF yang dikecilkan, sehingga teks tetap tajam dan bisa disalin.</td></tr>
+      <tr><td>Paling kecil</td><td>Setiap halaman diubah menjadi gambar. Filenya paling kecil, tetapi teks tidak bisa disalin lagi.</td></tr>
+      <tr><td>Tingkat</td><td>Ringan (kualitas tinggi) · <b>Sedang</b> · Kuat (file terkecil)</td></tr>
+    </table>
+  </div>
+
+  <div class="kicker" style="margin-top:18px">Bagian 4</div>
+  <h2>Lainnya</h2>
+  <div class="rule"></div>
+
+  <div class="tool">
+    <h3><span class="ic">🧮</span> Kalkulator</h3>
+    <p class="what">Kalkulator sehari-hari dengan format angka Indonesia (titik untuk ribuan, koma untuk desimal, misalnya 1.234,5).</p>
+    <ul>
+      <li>Bisa dipakai dengan keyboard: angka, <span class="k">+ − * /</span>, <span class="k">Enter</span> untuk hasil, <span class="k">Backspace</span> untuk menghapus satu angka, dan <span class="k">Esc</span> untuk menghapus semua.</li>
+      <li><b>%</b> bekerja seperti kalkulator HP. Contoh: <code>200.000 − 10%</code> = 180.000.</li>
+      <li><b>📋 Salin hasil</b> menyalin angka untuk ditempel di chat atau Excel.</li>
+      <li><b>Riwayat</b> menyimpan hitungan sebelumnya. Klik salah satu untuk memakai hasilnya lagi.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===== INSTAL & TANYA JAWAB ===== -->
+<section class="page">
+  <div class="kicker">Bagian 5</div>
+  <h2>Pasang seperti aplikasi</h2>
+  <div class="rule"></div>
+  <p>Amajing Converter bisa dipasang di HP atau laptop, sehingga muncul sebagai ikon di layar utama dan terbuka di jendela sendiri tanpa bilah alamat.</p>
+  <div class="grid">
+    <div class="card"><h3>Android</h3>Buka di <b>Chrome</b> atau <b>Samsung Internet</b>, tekan <b>📲 Instal aplikasi</b> di bagian bawah halaman, lalu pilih <b>Instal</b>.</div>
+    <div class="card"><h3>iPhone / iPad</h3>Buka di <b>Safari</b>, tekan tombol <b>Bagikan</b> (kotak dengan panah ke atas), lalu pilih <b>Tambah ke Layar Utama</b>.</div>
+    <div class="card"><h3>Laptop (Chrome / Edge)</h3>Tekan <b>📲 Instal aplikasi</b> di bagian bawah halaman, atau ikon instal di ujung kanan bilah alamat.</div>
+    <div class="card"><h3>Update</h3>Aplikasi selalu mengambil versi terbaru setiap kali dibuka saat ada internet. Tidak perlu memasang ulang.</div>
+  </div>
+
+  <div class="kicker" style="margin-top:22px">Bagian 6</div>
+  <h2>Tanya jawab</h2>
+  <div class="rule"></div>
+
+  <h3>Apakah file saya di-upload?</h3>
+  <p>Tidak. Semua proses terjadi di perangkatmu sendiri. Kamu bahkan bisa memutus internet setelah alatnya terbuka.</p>
+
+  <h3>Hasil unduhan ada di mana?</h3>
+  <p>Di folder <b>Downloads</b> (Unduhan) pada laptop atau HP kamu.</p>
+
+  <h3>Prosesnya lama atau macet</h3>
+  <p>File besar (video panjang, PDF ratusan halaman) memang butuh waktu. Biarkan tab tetap terbuka dan jangan pindah ke aplikasi lain di HP. Kalau tetap gagal, tutup tab lain yang berat, lalu coba lagi.</p>
+
+  <h3>Ada alat yang tidak jalan</h3>
+  <p>Pastikan kamu memakai <b>Chrome</b> atau <b>Edge</b> versi terbaru. Kompres Video membutuhkan fitur browser terbaru, sehingga tidak semua browser lama bisa menjalankannya.</p>
+
+  <h3>Hasil PDF → Word berantakan</h3>
+  <p>Coba mode lain. Pakai <b>Tata letak persis</b> untuk tampilan yang sama dengan PDF, atau <b>Alur teks biasa</b> untuk mengedit tulisan panjang. PDF hasil scan memang tidak bisa diubah menjadi teks.</p>
+
+  <h3>Punya saran atau menemukan kesalahan?</h3>
+  <p>Tekan <b>💬 Kirim masukan</b> di bagian bawah aplikasi. Setiap masukan dibaca.</p>
+
+  <div class="end">
+    <img src="../brand/logo.svg" alt="Amajing Labs">
+    <p><a class="dlbig" href="Panduan-Amajing-Converter.pdf" download>⬇ Unduh panduan (PDF)</a></p>
+    <p>Suka dengan aplikasi ini? Dukung pengembangannya lewat <b>☕ Traktir kopi</b> di <a href="https://saweria.co/amajinglabs">saweria.co/amajinglabs</a></p>
+  </div>
+</section>
+
+</main>
+<p class="sitefoot">© Amajing Labs · <a href="../">Buka Amajing Converter</a></p>
+</body>
+</html>
