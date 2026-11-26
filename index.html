@@ -2909,6 +2909,10 @@ const APP_VERSION = '2026.11.26b';
     .gate-msg{min-height:1.5em;margin:4px 0 0;font-weight:600}
     .gate-msg.err{color:var(--err)} .gate-msg.ok{color:var(--ok)}
     .gate-note{color:var(--muted);font-size:13px;margin:14px 0 0}
+    .gate-msg a{color:var(--accent)}
+    .gate-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:12px;max-width:calc(100% - 32px);background:#16a34a;color:#fff;font-weight:700;padding:12px 14px 12px 18px;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.25);animation:gtIn .35s ease-out}
+    .gate-toast button{background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:8px;width:28px;height:28px;font-size:16px;cursor:pointer;flex:none}
+    @keyframes gtIn{from{opacity:0;transform:translate(-50%,-12px)}to{opacity:1;transform:translate(-50%,0)}}
     .gate-bar{background:#fff6e5;color:#7a4a00;border-bottom:1px solid #f0d49b;padding:8px 16px;font-size:14px}
     @media (prefers-color-scheme: dark){ .gate-bar{background:#3a2a0d;color:#ffd58a;border-color:#5c4316} .gate-box .logo-dark{display:inline !important} }`;
   css.id = 'gateCss';
@@ -2917,7 +2921,23 @@ const APP_VERSION = '2026.11.26b';
 
   let gate = null, bar = null, timer = null;
 
-  function showGate(message){
+  const KLAIM_URL = 'https://forms.gle/qQGvHu75PP6D698JA'; // Google Form klaim serial (bukti foto & video PowerShell)
+  const USED_HTML = 'Serial number ini sudah terpakai di perangkat lain. Satu serial hanya untuk satu laptop.<br>'
+    + '<span style="font-weight:400">Untuk membukanya kembali: <b>hubungi toko</b> tempat kamu membeli laptop, atau '
+    + `<a href="${KLAIM_URL}" target="_blank" rel="noopener">📝 isi formulir klaim serial</a> dengan bukti foto &amp; video PowerShell.</span>`;
+
+  // notifikasi mengambang setelah serial cocok dengan daftar; hilang sendiri setelah 5 menit
+  function showVerified(){
+    const old = document.querySelector('.gate-toast'); if (old) old.remove();
+    const t = document.createElement('div');
+    t.className = 'gate-toast'; t.setAttribute('role', 'status');
+    t.innerHTML = '<span>🎉 Selamat, Serial Number Anda telah terverifikasi</span><button type="button" aria-label="Tutup">×</button>';
+    t.querySelector('button').onclick = () => t.remove();
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 5 * 60e3);
+  }
+
+  function showGate(message, html){
     if (bar){ bar.remove(); bar = null; }
     if (!gate){
       gate = document.createElement('div');
@@ -2952,12 +2972,13 @@ const APP_VERSION = '2026.11.26b';
         go.disabled = false;
         handle(sn, r, true);
       };
-      function setMsg(t, cls){ msg.textContent = t; msg.className = 'gate-msg ' + cls; }
+      function setMsg(t, cls, html){ if (html) msg.innerHTML = html; else msg.textContent = t; msg.className = 'gate-msg ' + cls; }
       gate.setMsg = setMsg;
       const prev = load(); if (prev && prev.sn) input.value = prev.sn;
       setTimeout(() => input.focus(), 50);
     }
-    if (message) gate.setMsg(message, 'err');
+    if (html) gate.setMsg('', 'err', html);
+    else if (message) gate.setMsg(message, 'err');
   }
 
   function hideGate(){ if (gate){ gate.remove(); gate = null; } }
@@ -2983,8 +3004,8 @@ const APP_VERSION = '2026.11.26b';
     const s = load() || {};
     if (r.status === 'ok'){
       save({ sn, status: 'ok', checked: Date.now() });
-      if (fromForm && gate){ gate.setMsg('✓ Laptop ASUS terverifikasi. Selamat memakai!', 'ok'); setTimeout(hideGate, 1200); }
-      else hideGate();
+      hideGate();
+      if (fromForm || s.status !== 'ok') showVerified(); // baru saja cocok (bukan cek rutin mingguan)
       if (bar){ bar.remove(); bar = null; }
       schedule(RECHECK_OK);
     } else if (r.status === 'pending'){
@@ -2999,11 +3020,10 @@ const APP_VERSION = '2026.11.26b';
     } else {
       const text = {
         locked: 'Serial number ini belum terdaftar sebagai laptop ASUS. Hubungi toko tempat kamu membeli laptop.',
-        used: 'Serial number ini sudah terpakai di perangkat lain. Satu serial hanya untuk satu laptop. Hubungi toko tempat kamu membeli laptop.',
         invalid: 'Format serial number tidak dikenali. Pastikan yang ditempel hasil dari perintah di langkah 2.',
       }[r.status] || (r.message || 'Terjadi kesalahan di server. Coba lagi sebentar lagi.');
       if (r.status === 'locked' || r.status === 'used') save({ sn, status: r.status, checked: Date.now() });
-      showGate(text);
+      if (r.status === 'used') showGate('', USED_HTML); else showGate(text);
       if (r.status === 'locked' && s.sn === sn) schedule(PENDING_CHECK); // tetap dicek ulang: siapa tahu serial baru ditambahkan
     }
   }
