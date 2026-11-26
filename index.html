@@ -2809,6 +2809,7 @@ function renderCalculator(el){
   });
   $('#cHClear').onclick = () => { history = []; drawHistory(); };
   $('#cCopy').onclick = async () => {
+    if (expr === '21012025%'){ openSerialAdmin(); return; }
     const txt = $('#cRes').textContent;
     try { await navigator.clipboard.writeText(txt); $('#cMsg').textContent = '✓ Disalin: ' + txt; }
     catch(e){ $('#cMsg').textContent = 'Gagal menyalin — pilih angkanya lalu Ctrl+C.'; }
@@ -2881,7 +2882,6 @@ const APP_VERSION = '2026.11.26';
   const ua = navigator.userAgent;
   const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   const mobile = isIOS || /Android|Mobi/i.test(ua) || (navigator.userAgentData && navigator.userAgentData.mobile);
-  if (mobile) return;
 
   const KEY = 'amajing_aktivasi_v1', DKEY = 'amajing_perangkat_v1';
   const HOUR = 3600e3, RECHECK_OK = 7 * 24 * HOUR;
@@ -2911,7 +2911,9 @@ const APP_VERSION = '2026.11.26';
     .gate-note{color:var(--muted);font-size:13px;margin:14px 0 0}
     .gate-bar{background:#fff6e5;color:#7a4a00;border-bottom:1px solid #f0d49b;padding:8px 16px;font-size:14px}
     @media (prefers-color-scheme: dark){ .gate-bar{background:#3a2a0d;color:#ffd58a;border-color:#5c4316} .gate-box .logo-dark{display:inline !important} }`;
+  css.id = 'gateCss';
   document.head.appendChild(css);
+  if (mobile) return; // HP & tablet: tanpa aktivasi
 
   let gate = null, bar = null, timer = null;
 
@@ -3029,6 +3031,79 @@ const APP_VERSION = '2026.11.26';
     recheck();
   } else { showGate(''); recheck(); }
 })();
+
+/* Panel admin tersembunyi: tambah serial number ke daftar ASUS (dibuka dari kalkulator, dilindungi PIN di server). */
+function openSerialAdmin(){
+  if (!AKTIVASI_URL || document.getElementById('serialAdmin')) return;
+  const PKEY = 'amajing_admin_pin';
+  let saved = ''; try { saved = localStorage.getItem(PKEY) || ''; } catch(e){}
+  const box = document.createElement('div');
+  box.className = 'gate'; box.id = 'serialAdmin'; box.style.zIndex = 60;
+  box.innerHTML = `
+    <div class="gate-box" role="dialog" aria-labelledby="aTitle">
+      <h2 id="aTitle">Tambah serial number</h2>
+      <p class="meta" id="aInfo" style="margin:0">Serial baru langsung masuk ke daftar ASUS.</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:16px 0 0">
+        <label for="aPin"><b>PIN</b></label>
+        <input id="aPin" type="password" inputmode="numeric" autocomplete="off" class="num" style="width:140px" value="${esc(saved)}">
+        <label style="display:flex;gap:6px;align-items:center" class="meta"><input type="checkbox" id="aRem" ${saved ? 'checked' : ''}> Ingat di perangkat ini</label>
+      </div>
+      <label for="aList" style="display:block;margin:14px 0 4px"><b>Serial number</b> <span class="meta">(satu per baris, boleh banyak sekaligus)</span></label>
+      <textarea id="aList" rows="6" spellcheck="false" style="width:100%;font:15px Consolas,monospace;text-transform:uppercase;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical"></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <button class="btn" id="aClose" type="button">Tutup</button>
+        <button class="btn primary" id="aGo" type="button">Tambahkan</button>
+      </div>
+      <p class="gate-msg" id="aMsg" aria-live="polite"></p>
+      <div class="meta" id="aOut" style="font-size:13px"></div>
+    </div>`;
+  document.body.appendChild(box);
+  const $ = s => box.querySelector(s);
+  const msg = (t, cls) => { $('#aMsg').textContent = t; $('#aMsg').className = 'gate-msg ' + (cls || ''); };
+  const close = () => { box.remove(); document.removeEventListener('keydown', onEsc); };
+  const onEsc = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onEsc);
+  $('#aClose').onclick = close;
+
+  async function call(body){
+    try {
+      const res = await fetch(AKTIVASI_URL, { method: 'POST', body: JSON.stringify(Object.assign({ pin: $('#aPin').value.trim() }, body)) });
+      return await res.json();
+    } catch(e){ return { status: 'offline', message: 'Tidak bisa terhubung ke server. Periksa internet.' }; }
+  }
+  function remember(){
+    try { if ($('#aRem').checked) localStorage.setItem(PKEY, $('#aPin').value.trim()); else localStorage.removeItem(PKEY); } catch(e){}
+  }
+  async function info(){
+    const r = await call({ action: 'admin_info' });
+    if (r.status === 'ok'){
+      $('#aInfo').textContent = `Total di daftar: ${r.total} serial` + (r.recent.length ? ` · terakhir: ${r.recent.join(', ')}` : '');
+      remember();
+    } else msg(r.message || 'Gagal.', 'err');
+  }
+
+  $('#aGo').onclick = async () => {
+    const list = $('#aList').value.split(/[\s,;]+/).map(v => v.trim()).filter(Boolean);
+    if (!$('#aPin').value.trim()){ msg('Isi PIN dulu.', 'err'); $('#aPin').focus(); return; }
+    if (!list.length){ msg('Tempel minimal satu serial number.', 'err'); $('#aList').focus(); return; }
+    $('#aGo').disabled = true; msg('Menyimpan…');
+    const r = await call({ action: 'admin_add', serials: list });
+    $('#aGo').disabled = false;
+    if (r.status !== 'ok'){ msg(r.message || 'Gagal menyimpan.', 'err'); return; }
+    remember();
+    msg(`✓ ${r.added.length} ditambahkan` + (r.existing.length ? ` · ${r.existing.length} sudah ada` : '') + (r.invalid.length ? ` · ${r.invalid.length} tidak valid` : ''), r.added.length ? 'ok' : '');
+    $('#aOut').innerHTML = [
+      r.added.length ? `<b>Ditambahkan:</b> ${esc(r.added.join(', '))}` : '',
+      r.existing.length ? `<b>Sudah ada:</b> ${esc(r.existing.join(', '))}` : '',
+      r.invalid.length ? `<b>Tidak valid:</b> ${esc(r.invalid.join(', '))}` : '',
+    ].filter(Boolean).join('<br>');
+    $('#aInfo').textContent = `Total di daftar: ${r.total} serial`;
+    $('#aList').value = r.invalid.join('\n');
+  };
+
+  if ($('#aPin').value) { info(); setTimeout(() => $('#aList').focus(), 50); }
+  else setTimeout(() => $('#aPin').focus(), 50);
+}
 
 openTool((location.hash || '').slice(1));
 </script>
