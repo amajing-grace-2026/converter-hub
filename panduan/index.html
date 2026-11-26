@@ -125,6 +125,31 @@ code,.k{font-family:Consolas,'Courier New',monospace;font-size:9pt;background:va
   </table>
 </section>
 
+<!-- ===== AKTIVASI ===== -->
+<section class="page">
+  <div class="kicker">Khusus laptop</div>
+  <h2>Aktivasi laptop ASUS</h2>
+  <div class="rule"></div>
+  <p>Di laptop, Amajing Converter khusus untuk <b>laptop ASUS</b>. Saat pertama dibuka, muncul layar <b>Aktivasi</b>. Aktivasi cukup <b>sekali</b> per laptop. Di HP dan tablet, aplikasi langsung bisa dipakai tanpa aktivasi.</p>
+
+  <ol class="steps">
+    <li>Klik kanan tombol <b>Start</b> (logo Windows) di pojok kiri bawah, lalu pilih <b>Terminal</b> atau <b>Windows PowerShell</b>.</li>
+    <li>Di layar Aktivasi, tekan <b>📋 Salin perintah</b>. Kembali ke jendela Terminal, klik kanan untuk menempel, lalu tekan <span class="k">Enter</span>. Tidak ada tulisan yang muncul, tetapi serial number laptop sudah tersalin.<br>
+      Perintahnya: <code>(Get-CimInstance Win32_BIOS).SerialNumber | Set-Clipboard</code></li>
+    <li>Kembali ke layar Aktivasi, klik kotak <b>Serial number</b>, tekan <span class="k">Ctrl+V</span>, lalu tekan <b>Aktifkan</b>.</li>
+  </ol>
+
+  <h3>Hasil aktivasi</h3>
+  <table class="opt">
+    <tr><td>✓ Terverifikasi</td><td>Aplikasi langsung terbuka dan tetap aktif, walaupun browser ditutup atau laptop dimatikan.</td></tr>
+    <tr><td>⏳ Sedang diverifikasi</td><td>Serial belum ada di data kami. Aplikasi <b>tetap bisa dipakai</b> selama masa tunggu 3 × 24 jam, dan dicek ulang otomatis setiap jam selama ada internet.</td></tr>
+    <tr><td>Belum terdaftar</td><td>Masa tunggu sudah habis dan serial tetap belum terdaftar. Hubungi toko tempat kamu membeli laptop.</td></tr>
+  </table>
+
+  <div class="tip"><b>Ganti browser atau hapus data browser?</b> Ulangi langkah di atas dengan serial yang sama. Laptopmu akan dikenali lagi.</div>
+  <div class="tip warn"><b>Butuh internet</b> saat aktivasi. Setelah aktif, aplikasi tetap bisa dipakai walaupun sedang tidak ada internet.</div>
+</section>
+
 <!-- ===== AUDIO & VIDEO ===== -->
 <section class="page">
   <div class="kicker">Bagian 1</div>

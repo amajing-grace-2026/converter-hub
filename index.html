@@ -2869,6 +2869,167 @@ function renderCalculator(el){
   });
 })();
 
+/* ============================================================
+   Aktivasi: di laptop/PC aplikasi hanya terbuka untuk serial number ASUS yang terdaftar.
+   HP & tablet tidak perlu aktivasi. Server = Apps Script di Google Sheet "Serial ASUS".
+   ============================================================ */
+const AKTIVASI_URL = 'https://script.google.com/macros/s/AKfycbwopSQpbrrllhq9ALaNuYINgH5hrORbVTN8HfH5QiuiUINtZn3cvKTTlRjMIxnq4dOh/exec'; // URL Aplikasi Web Apps Script (berakhiran /exec). Kosong = aktivasi dimatikan.
+const APP_VERSION = '2026.11.26';
+
+(function aktivasi(){
+  if (!AKTIVASI_URL) return;
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const mobile = isIOS || /Android|Mobi/i.test(ua) || (navigator.userAgentData && navigator.userAgentData.mobile);
+  if (mobile) return;
+
+  const KEY = 'amajing_aktivasi_v1', DKEY = 'amajing_perangkat_v1';
+  const HOUR = 3600e3, RECHECK_OK = 7 * 24 * HOUR;
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch(e){ return null; } };
+  const save = s => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch(e){} };
+  let device = null;
+  try { device = localStorage.getItem(DKEY); } catch(e){}
+  if (!device){
+    device = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12));
+    try { localStorage.setItem(DKEY, device); } catch(e){}
+  }
+
+  const css = document.createElement('style');
+  css.textContent = `
+    .gate{position:fixed;inset:0;z-index:50;background:var(--bg);overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
+    .gate-box{width:100%;max-width:560px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px 26px}
+    .gate-box .logo{height:30px;margin-bottom:18px}
+    .gate-box h2{margin:0 0 6px;font-size:22px}
+    .gate-box ol{padding-left:20px;margin:16px 0}
+    .gate-box li{margin:0 0 14px}
+    .gate-cmd{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+    .gate-cmd code{flex:1 1 260px;min-width:0;overflow-wrap:anywhere;font:13px Consolas,monospace;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+    .gate-in{display:flex;gap:8px;margin-top:6px}
+    .gate-in input{flex:1;min-width:0;font:inherit;font-size:16px;letter-spacing:.04em;text-transform:uppercase;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+    .gate-msg{min-height:1.5em;margin:4px 0 0;font-weight:600}
+    .gate-msg.err{color:var(--err)} .gate-msg.ok{color:var(--ok)}
+    .gate-note{color:var(--muted);font-size:13px;margin:14px 0 0}
+    .gate-bar{background:#fff6e5;color:#7a4a00;border-bottom:1px solid #f0d49b;padding:8px 16px;font-size:14px}
+    @media (prefers-color-scheme: dark){ .gate-bar{background:#3a2a0d;color:#ffd58a;border-color:#5c4316} .gate-box .logo-dark{display:inline !important} }`;
+  document.head.appendChild(css);
+
+  let gate = null, bar = null, timer = null;
+
+  function showGate(message){
+    if (bar){ bar.remove(); bar = null; }
+    if (!gate){
+      gate = document.createElement('div');
+      gate.className = 'gate';
+      gate.innerHTML = `
+        <div class="gate-box" role="dialog" aria-labelledby="gTitle">
+          <img class="logo logo-light" src="brand/logo.svg" alt="Amajing Labs"><img class="logo logo-dark" src="brand/logo-gelap.svg" alt="Amajing Labs">
+          <h2 id="gTitle">Aktivasi Amajing Converter</h2>
+          <p class="meta" style="margin:0">Aplikasi ini khusus untuk <b>laptop ASUS</b>. Aktivasi cukup <b>sekali</b> per laptop.</p>
+          <ol>
+            <li>Klik kanan tombol <b>Start</b> (logo Windows), lalu pilih <b>Terminal</b> atau <b>Windows PowerShell</b>.</li>
+            <li>Salin perintah ini, tempel di jendela tadi (klik kanan), lalu tekan <b>Enter</b>. Serial number laptop langsung tersalin.
+              <div class="gate-cmd"><code id="gCmd">(Get-CimInstance Win32_BIOS).SerialNumber | Set-Clipboard</code><button class="btn" id="gCopy" type="button">📋 Salin perintah</button></div></li>
+            <li>Tempel (<b>Ctrl+V</b>) serial number di sini:
+              <form class="gate-in" id="gForm"><input id="gSn" autocomplete="off" spellcheck="false" placeholder="Serial number" maxlength="40" aria-label="Serial number"><button class="btn primary" id="gGo">Aktifkan</button></form>
+              <p class="gate-msg" id="gMsg" aria-live="polite"></p></li>
+          </ol>
+          <p class="gate-note">Butuh bantuan? Hubungi toko tempat kamu membeli laptop. Di HP dan tablet, aplikasi ini bisa langsung dipakai tanpa aktivasi.</p>
+        </div>`;
+      document.body.appendChild(gate);
+      const msg = gate.querySelector('#gMsg'), input = gate.querySelector('#gSn'), go = gate.querySelector('#gGo');
+      gate.querySelector('#gCopy').onclick = async () => {
+        try { await navigator.clipboard.writeText(gate.querySelector('#gCmd').textContent); gate.querySelector('#gCopy').textContent = '✓ Tersalin'; }
+        catch(e){ getSelection().selectAllChildren(gate.querySelector('#gCmd')); }
+      };
+      gate.querySelector('#gForm').onsubmit = async e => {
+        e.preventDefault();
+        const sn = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (sn.length < 5){ setMsg('Serial number belum diisi atau terlalu pendek.', 'err'); return; }
+        go.disabled = true; setMsg('Mengecek serial number…', '');
+        const r = await ask(sn);
+        go.disabled = false;
+        handle(sn, r, true);
+      };
+      function setMsg(t, cls){ msg.textContent = t; msg.className = 'gate-msg ' + cls; }
+      gate.setMsg = setMsg;
+      const prev = load(); if (prev && prev.sn) input.value = prev.sn;
+      setTimeout(() => input.focus(), 50);
+    }
+    if (message) gate.setMsg(message, 'err');
+  }
+
+  function hideGate(){ if (gate){ gate.remove(); gate = null; } }
+
+  function showBar(until){
+    if (!bar){ bar = document.createElement('div'); bar.className = 'gate-bar'; document.querySelector('.content').prepend(bar); }
+    const h = Math.max(1, Math.ceil((until - Date.now()) / HOUR));
+    bar.innerHTML = `⏳ Serial number laptop ini sedang diverifikasi. Aplikasi tetap bisa dipakai selama masa tunggu (<b>sisa ±${h} jam</b>). Pengecekan ulang otomatis setiap jam.`;
+  }
+
+  async function ask(sn){
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
+    try {
+      const res = await fetch(AKTIVASI_URL, { method: 'POST', signal: ctl.signal,
+        body: JSON.stringify({ sn, device, version: APP_VERSION, ua: navigator.userAgent }) });
+      return await res.json();
+    } catch(e){ return { status: 'offline' }; }
+    finally { clearTimeout(t); }
+  }
+
+  // r.status: ok | pending | locked | limit | invalid | error | offline
+  function handle(sn, r, fromForm){
+    const s = load() || {};
+    if (r.status === 'ok'){
+      save({ sn, status: 'ok', checked: Date.now() });
+      if (fromForm && gate){ gate.setMsg('✓ Laptop ASUS terverifikasi. Selamat memakai!', 'ok'); setTimeout(hideGate, 1200); }
+      else hideGate();
+      if (bar){ bar.remove(); bar = null; }
+      schedule(RECHECK_OK);
+    } else if (r.status === 'pending'){
+      save({ sn, status: 'pending', until: r.until, checked: Date.now() });
+      hideGate(); showBar(r.until); schedule(HOUR);
+    } else if (r.status === 'offline'){
+      if (fromForm){ gate.setMsg('Tidak bisa terhubung ke server. Periksa internet, lalu coba lagi.', 'err'); return; }
+      // tidak ada internet: pakai status terakhir yang tersimpan
+      if (s.status === 'ok'){ schedule(HOUR); return; }
+      if (s.status === 'pending' && Date.now() < s.until){ showBar(s.until); schedule(HOUR); return; }
+      showGate(s.status === 'pending' ? 'Masa tunggu sudah habis. Sambungkan internet supaya serial bisa dicek ulang.' : '');
+    } else {
+      const text = {
+        locked: 'Serial number ini belum terdaftar sebagai laptop ASUS. Hubungi toko tempat kamu membeli laptop.',
+        limit: 'Serial number ini sudah dipakai di terlalu banyak perangkat.',
+        invalid: 'Format serial number tidak dikenali. Pastikan yang ditempel hasil dari perintah di langkah 2.',
+      }[r.status] || (r.message || 'Terjadi kesalahan di server. Coba lagi sebentar lagi.');
+      if (r.status === 'locked' || r.status === 'limit') save({ sn, status: r.status, checked: Date.now() });
+      showGate(text);
+      if (r.status === 'locked' && s.sn === sn) schedule(HOUR); // tetap dicek ulang: siapa tahu serial baru ditambahkan
+    }
+  }
+
+  function schedule(ms){
+    clearTimeout(timer);
+    timer = setTimeout(recheck, ms);
+  }
+  async function recheck(){
+    const s = load();
+    if (!s || !s.sn) return;
+    if (!navigator.onLine){ handle(s.sn, { status: 'offline' }, false); return; }
+    handle(s.sn, await ask(s.sn), false);
+  }
+  window.addEventListener('online', () => { const s = load(); if (s && s.status !== 'ok') recheck(); });
+
+  // saat aplikasi dibuka
+  const s = load();
+  if (!s || !s.sn) showGate('');
+  else if (s.status === 'ok'){
+    // sudah aktif: langsung pakai; sesekali lapor ke server (tercatat sebagai pengguna aktif)
+    if (Date.now() - (s.checked || 0) > RECHECK_OK) recheck(); else schedule(RECHECK_OK - (Date.now() - s.checked));
+  } else if (s.status === 'pending'){
+    if (Date.now() < s.until) showBar(s.until); else showGate('Masa tunggu sudah habis. Mengecek ulang serial number…');
+    recheck();
+  } else { showGate(''); recheck(); }
+})();
+
 openTool((location.hash || '').slice(1));
 </script>
 </body>
