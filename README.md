@@ -2,7 +2,6 @@
 
 Kumpulan converter yang jalan langsung di browser. File tidak di-upload ke server mana pun — semua diproses di perangkat sendiri.
 
-**Buka:** https://amajing-grace-2026.github.io/converter-hub/
 
 ## Alat
 
@@ -13,7 +12,7 @@ Kumpulan converter yang jalan langsung di browser. File tidak di-upload ke serve
 
 Paling cocok di Chrome atau Edge versi terbaru (Kompres Video butuh WebCodecs).
 
-**Panduan pemakaian:** baca online di [panduan/](https://amajing-grace-2026.github.io/converter-hub/panduan/) atau unduh [PDF](panduan/Panduan-Amajing-Converter.pdf)
+**Panduan pemakaian:** baca online di [panduan/](panduan/) atau unduh [PDF](panduan/Panduan-Amajing-Converter.pdf)
 
 **Instal di HP:** buka link di Chrome/Samsung Internet (Android) lalu pilih "Instal aplikasi", atau di Safari (iPhone) Bagikan → "Tambah ke Layar Utama".
 
